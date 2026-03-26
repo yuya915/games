@@ -2,17 +2,20 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>テトリス</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     background: #1a1a2e;
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
-    height: 100vh;
+    min-height: 100vh;
     font-family: 'Segoe UI', sans-serif;
     color: white;
+    padding: 8px;
   }
   .container {
     display: flex;
@@ -68,6 +71,7 @@
     justify-content: center;
     align-items: center;
     gap: 16px;
+    z-index: 10;
   }
   #overlay h2 { font-size: 36px; color: #ff4444; }
   #overlay p  { color: #ccc; }
@@ -92,6 +96,7 @@
     justify-content: center;
     align-items: center;
     gap: 16px;
+    z-index: 10;
   }
   #start-overlay h1 { font-size: 48px; color: #00d4ff; letter-spacing: 4px; }
   #start-overlay button {
@@ -105,12 +110,65 @@
     font-weight: bold;
   }
   #start-overlay button:hover { background: #00aacc; }
+
+  #mobile-controls {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    margin-top: 16px;
+  }
+  .ctrl-row {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+  }
+  .ctrl-btn {
+    width: 68px;
+    height: 68px;
+    font-size: 26px;
+    background: rgba(255,255,255,0.08);
+    color: white;
+    border: 1px solid #555;
+    border-radius: 10px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.1s;
+  }
+  .ctrl-btn:active { background: rgba(0,212,255,0.3); }
+  .ctrl-btn.wide { width: 148px; font-size: 14px; font-weight: bold; letter-spacing: 2px; }
+
+  @media (max-width: 560px) {
+    .container {
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    .panel {
+      width: auto;
+      flex-direction: row;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+    }
+    .panel-box {
+      padding: 8px 12px;
+      min-width: 80px;
+    }
+    .panel-box.controls-box { display: none; }
+    #mobile-controls { display: flex; }
+  }
 </style>
 </head>
 <body>
 
 <div class="container">
-  <canvas id="board" width="300" height="600"></canvas>
+  <canvas id="board"></canvas>
   <div class="panel">
     <div class="panel-box">
       <h3>スコア</h3>
@@ -128,7 +186,7 @@
       <h3>NEXT</h3>
       <canvas id="next-canvas" width="110" height="80"></canvas>
     </div>
-    <div class="panel-box controls">
+    <div class="panel-box controls-box controls">
       <h3 style="margin-bottom:8px">操作</h3>
       <div><span>← →</span> 移動</div>
       <div><span>↑</span> 回転</div>
@@ -136,6 +194,20 @@
       <div><span>Space</span> 落下</div>
       <div><span>P</span> ポーズ</div>
     </div>
+  </div>
+</div>
+
+<div id="mobile-controls">
+  <div class="ctrl-row">
+    <div class="ctrl-btn" id="btn-rotate">↑</div>
+  </div>
+  <div class="ctrl-row">
+    <div class="ctrl-btn" id="btn-left">←</div>
+    <div class="ctrl-btn" id="btn-down">↓</div>
+    <div class="ctrl-btn" id="btn-right">→</div>
+  </div>
+  <div class="ctrl-row">
+    <div class="ctrl-btn wide" id="btn-drop">HARD DROP</div>
   </div>
 </div>
 
@@ -151,9 +223,14 @@
 </div>
 
 <script>
-const COLS = 10, ROWS = 20, SIZE = 30;
+const COLS = 10, ROWS = 20;
+const SIZE = Math.min(30, Math.floor((Math.min(window.innerWidth, 400) - 20) / COLS));
+
 const canvas = document.getElementById('board');
+canvas.width  = SIZE * COLS;
+canvas.height = SIZE * ROWS;
 const ctx = canvas.getContext('2d');
+
 const nextCanvas = document.getElementById('next-canvas');
 const nctx = nextCanvas.getContext('2d');
 
@@ -224,16 +301,20 @@ function lock() {
 }
 
 function clearLines() {
-  const full = board.reduce((acc, row, i) => {
-    if (row.every(c => c !== null)) acc.push(i);
-    return acc;
-  }, []);
+  const full = [];
+  for (let r = 0; r < ROWS; r++) {
+    if (board[r].every(c => c !== null)) full.push(r);
+  }
   if (!full.length) return;
+
   const pts = [0, 100, 300, 500, 800];
   score += pts[full.length] * level;
   lines += full.length;
   level = Math.floor(lines / 10) + 1;
-  full.forEach(i => board.splice(i, 1));
+
+  for (let i = full.length - 1; i >= 0; i--) {
+    board.splice(full[i], 1);
+  }
   while (board.length < ROWS) board.unshift(Array(COLS).fill(null));
   updateHUD();
 }
@@ -258,7 +339,6 @@ function drawBlock(context, x, y, color, size=SIZE, alpha=1) {
   context.globalAlpha = alpha;
   context.fillStyle = color;
   context.fillRect(x * size, y * size, size - 1, size - 1);
-  // ハイライト
   context.fillStyle = 'rgba(255,255,255,0.2)';
   context.fillRect(x * size, y * size, size - 1, 4);
   context.fillRect(x * size, y * size, 4, size - 1);
@@ -266,11 +346,9 @@ function drawBlock(context, x, y, color, size=SIZE, alpha=1) {
 }
 
 function draw() {
-  // 背景
   ctx.fillStyle = '#0f0f1a';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // グリッド
   ctx.strokeStyle = 'rgba(255,255,255,0.05)';
   ctx.lineWidth = 1;
   for (let r = 0; r < ROWS; r++) {
@@ -279,14 +357,12 @@ function draw() {
     }
   }
 
-  // ボード
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       if (board[r][c]) drawBlock(ctx, c, r, board[r][c]);
     }
   }
 
-  // ゴースト
   const gy = ghostY();
   if (gy !== current.y) {
     current.shape.forEach((row, r) => {
@@ -301,14 +377,12 @@ function draw() {
     });
   }
 
-  // 現在のピース
   current.shape.forEach((row, r) => {
     row.forEach((cell, c) => {
       if (cell) drawBlock(ctx, current.x + c, current.y + r, current.color);
     });
   });
 
-  // NEXTパネル
   nctx.fillStyle = '#16213e';
   nctx.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
   const ns = 22;
@@ -344,7 +418,7 @@ function loop(timestamp) {
   draw();
 
   if (gameOver) {
-    document.getElementById('final-score').textContent = `スコア: ${score}　ライン: ${lines}`;
+    document.getElementById('final-score').textContent = `スコア: ${score}\u3000ライン: ${lines}`;
     document.getElementById('overlay').style.display = 'flex';
     return;
   }
@@ -391,6 +465,55 @@ document.addEventListener('keydown', e => {
       break;
   }
 });
+
+(function setupMobileControls() {
+  let repeatTimer = null;
+
+  function startRepeat(action) {
+    action();
+    repeatTimer = setInterval(action, 90);
+  }
+  function stopRepeat() {
+    clearInterval(repeatTimer);
+    repeatTimer = null;
+  }
+
+  function addRepeat(id, action) {
+    const el = document.getElementById(id);
+    el.addEventListener('touchstart', e => {
+      e.preventDefault();
+      if (gameOver || paused) return;
+      startRepeat(action);
+    }, {passive: false});
+    ['touchend', 'touchcancel'].forEach(ev =>
+      el.addEventListener(ev, e => { e.preventDefault(); stopRepeat(); }, {passive: false})
+    );
+  }
+
+  function addTap(id, action) {
+    const el = document.getElementById(id);
+    el.addEventListener('touchstart', e => {
+      e.preventDefault();
+      if (gameOver || paused) return;
+      action();
+    }, {passive: false});
+  }
+
+  addRepeat('btn-left',  () => { if (valid(current, -1)) current.x--; });
+  addRepeat('btn-right', () => { if (valid(current,  1)) current.x++; });
+  addRepeat('btn-down',  () => {
+    if (valid(current, 0, 1)) { current.y++; fallAcc = 0; }
+    else lock();
+  });
+  addTap('btn-rotate', () => {
+    const rot = rotate(current.shape);
+    if (valid(current, 0, 0, rot)) current.shape = rot;
+  });
+  addTap('btn-drop', () => {
+    while (valid(current, 0, 1)) current.y++;
+    lock();
+  });
+})();
 </script>
 </body>
 </html>
