@@ -63,6 +63,13 @@
   .controls span {
     color: #ccc;
   }
+  #board-wrap {
+    position: relative;
+    display: inline-block;
+  }
+  .ov-btn {
+    display: none;
+  }
   .mobile-hint { display: none; }
   #overlay {
     position: fixed;
@@ -132,13 +139,47 @@
     }
     .desktop-hint { display: none; }
     .mobile-hint  { display: block; }
+    #next-canvas {
+      width: 80px;
+      height: 45px;
+    }
+    .ov-btn {
+      display: block;
+      position: absolute;
+      background: rgba(255,255,255,0.12);
+      color: rgba(255,255,255,0.7);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: bold;
+      padding: 8px 12px;
+      z-index: 5;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .ov-btn:active {
+      background: rgba(255,255,255,0.3);
+    }
+    #btn-rotate { top: 8px; left: 8px; }
+    #btn-hard   { top: 8px; right: 8px; }
+    #btn-left   { bottom: 8px; left: 8px; }
+    #btn-down   { bottom: 8px; left: 50%; transform: translateX(-50%); }
+    #btn-right  { bottom: 8px; right: 8px; }
   }
 </style>
 </head>
 <body>
 
 <div class="container">
-  <canvas id="board"></canvas>
+  <div id="board-wrap">
+    <canvas id="board"></canvas>
+    <button class="ov-btn" id="btn-rotate">↑回転</button>
+    <button class="ov-btn" id="btn-hard">HARD</button>
+    <button class="ov-btn" id="btn-left">←</button>
+    <button class="ov-btn" id="btn-down">↓</button>
+    <button class="ov-btn" id="btn-right">→</button>
+  </div>
   <div class="panel">
     <div class="panel-box">
       <h3>スコア</h3>
@@ -190,7 +231,7 @@ const COLS = 10, ROWS = 20;
 const isMobile = window.innerWidth <= 560;
 const sizeByW = Math.floor((window.innerWidth - 20) / COLS);
 const sizeByH = isMobile
-  ? Math.floor((window.innerHeight - 80) / ROWS)
+  ? Math.floor((window.innerHeight - 130) / ROWS)
   : Math.floor((window.innerHeight - 40) / ROWS);
 const SIZE = Math.max(Math.min(sizeByW, sizeByH, 30), 18);
 
@@ -495,6 +536,43 @@ document.addEventListener('keydown', e => {
       }
     }
   }, {passive: false});
+})();
+
+// オーバーレイボタン操作
+(function setupOverlayButtons() {
+  const ids = ['btn-rotate','btn-hard','btn-left','btn-down','btn-right'];
+  const actions = {
+    'btn-rotate': () => {
+      const rot = rotate(current.shape);
+      if (valid(current, 0, 0, rot)) current.shape = rot;
+    },
+    'btn-hard': () => {
+      while (valid(current, 0, 1)) current.y++;
+      lock();
+    },
+    'btn-left': () => { if (valid(current, -1)) current.x--; },
+    'btn-down': () => {
+      if (valid(current, 0, 1)) { current.y++; fallAcc = 0; }
+      else lock();
+    },
+    'btn-right': () => { if (valid(current, 1)) current.x++; },
+  };
+  ids.forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener('touchstart', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!current || gameOver || paused) return;
+      actions[id]();
+    }, {passive: false});
+    btn.addEventListener('mousedown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!current || gameOver || paused) return;
+      actions[id]();
+    });
+  });
 })();
 </script>
 </body>
