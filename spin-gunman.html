@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>スピン・ガンマン</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; touch-action: none; }
+  body {
+    background: #1a1a2e;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100dvh;
+    font-family: 'Segoe UI', sans-serif;
+    color: white;
+  }
+  canvas { display: block; }
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    z-index: 10;
+  }
+  .overlay.hidden { display: none; }
+  .overlay h1 { font-size: 48px; color: #00d4ff; letter-spacing: 4px; }
+  .overlay h2 { font-size: 36px; color: #ff4444; }
+  .overlay p { color: #ccc; font-size: 18px; }
+  .overlay .score-display { font-size: 24px; color: #00d4ff; font-weight: bold; }
+  .overlay button {
+    margin-top: 8px;
+    padding: 12px 40px;
+    font-size: 18px;
+    background: #00d4ff;
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  .overlay button:hover { background: #00aacc; }
+  .btn-back {
+    margin-top: 4px;
+    padding: 10px 30px;
+    font-size: 14px;
+    background: transparent;
+    color: #888;
+    border: 1px solid #666;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    text-decoration: none;
+  }
+  .btn-back:hover { background: #333; color: #fff; }
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="start-overlay" class="overlay">
+  <h1>SPIN GUNMAN</h1>
+  <p>回転する銃で敵を狙い撃て！</p>
+  <p style="font-size:14px; color:#888;">タップ / クリック / スペースキー で射撃</p>
+  <button id="btn-start">START</button>
+  <a class="btn-back" href="index.html">← 戻る</a>
+</div>
+
+<div id="gameover-overlay" class="overlay hidden">
+  <h2>GAME OVER</h2>
+  <p id="final-score" class="score-display"></p>
+  <p id="final-stage" style="color:#888;"></p>
+  <button id="btn-retry">RETRY</button>
+  <a class="btn-back" href="index.html">← 戻る</a>
+</div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+// --- Canvas sizing ---
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// --- Constants ---
+const TWO_PI = Math.PI * 2;
+const BULLET_SPEED = 600; // px/s
+const ENTITY_RADIUS = 18;
+const BULLET_RADIUS = 5;
+const GUN_LENGTH = 32;
+const GUN_WIDTH = 8;
+
+// --- Difficulty table ---
+function getDifficulty(level) {
+  const l = Math.min(level, 9);
+  return {
+    enemies: 2 + Math.floor(l * 0.4),        // 2 ~ 5
+    bombs: 1 + Math.floor(l * 0.35),          // 1 ~ 4
+    rotSpeed: 1.5 + l * 0.08,                 // 1.5 ~ 2.22 rad/s
+    minGap: Math.max(0.25, 0.55 - l * 0.033), // 0.55 ~ 0.25 rad
+  };
+}
+
+// --- Game State ---
+let state = 'start'; // start | playing | dying | gameover
+let gunAngle = 0;
+let rotSpeed = 1.5;
+let bullets = [];
+let enemies = [];
+let bombs = [];
+let particles = [];
+let score = 0;
+let combo = 0;
+let comboTotalAngle = 0; // total gun rotation since last kill
+let stageGrace = false;
+let stageGraceAngle = 0;
+let hasShotThisStage = false;
+let stage = 1;
+let level = 0;
+let lastTime = null;
+let dyingTimer = 0;
+let dyingBomb = null;
+let animId;
+let cx, cy, ringRadius;
+
+// --- Stage generation ---
+function generateStage() {
+  const diff = getDifficulty(level);
+  rotSpeed = diff.rotSpeed;
+  cx = canvas.width / 2;
+  cy = canvas.height / 2;
+  ringRadius = Math.min(cx, cy) * 0.65;
+
+  const totalSlots = diff.enemies + diff.bombs;
+  const angles = [];
+
+  // Place entities with minimum gap
+  for (let i = 0; i < totalSlots; i++) {
+    let attempts = 0;
+    let angle;
+    do {
+      angle = Math.random() * TWO_PI;
+      attempts++;
+    } while (attempts < 200 && angles.some(a => angleDist(a, angle) < diff.minGap));
+    angles.push(angle);
+  }
+
+  // Shuffle and assign
+  const shuffled = angles.slice().sort(() => Math.random() - 0.5);
+
+  enemies = [];
+  for (let i = 0; i < diff.enemies; i++) {
+    const a = shuffled[i];
+    const r = ringRadius * (0.9 + Math.random() * 0.2);
+    enemies.push({
+      x: cx + Math.cos(a) * r,
+      y: cy + Math.sin(a) * r,
+      angle: a,
+      alive: true,
+      hitTime: 0,
+    });
+  }
+
+  bombs = [];
+  for (let i = diff.enemies; i < totalSlots; i++) {
+    const a = shuffled[i];
+    const r = ringRadius * (0.9 + Math.random() * 0.2);
+    bombs.push({
+      x: cx + Math.cos(a) * r,
+      y: cy + Math.sin(a) * r,
+      angle: a,
+      exploded: false,
+    });
+  }
+
+  bullets = [];
+  hasShotThisStage = false;
+}
+
+function angleDist(a, b) {
+  let d = Math.abs(a - b) % TWO_PI;
+  return d > Math.PI ? TWO_PI - d : d;
+}
+
+// --- Start / Restart ---
+function startGame() {
+  score = 0;
+  combo = 0;
+  comboTotalAngle = 0;
+  stage = 1;
+  level = 0;
+  gunAngle = -Math.PI / 2;
+  particles = [];
+  stageGrace = false;
+  state = 'playing';
+  generateStage();
+  document.getElementById('start-overlay').classList.add('hidden');
+  document.getElementById('gameover-overlay').classList.add('hidden');
+  lastTime = null;
+  cancelAnimationFrame(animId);
+  animId = requestAnimationFrame(loop);
+}
+
+function nextStage() {
+  stage++;
+  if ((stage - 1) % 3 === 0 && level < 9) {
+    level++;
+  }
+  stageGrace = true;
+  stageGraceAngle = 0;
+  generateStage();
+}
+
+// --- Shoot ---
+function shoot() {
+  if (state !== 'playing') return;
+  const dx = Math.cos(gunAngle);
+  const dy = Math.sin(gunAngle);
+  bullets.push({
+    x: cx + dx * GUN_LENGTH,
+    y: cy + dy * GUN_LENGTH,
+    dx: dx * BULLET_SPEED,
+    dy: dy * BULLET_SPEED,
+  });
+
+  if (!hasShotThisStage) {
+    hasShotThisStage = true;
+    if (!stageGrace) {
+      comboTotalAngle = 0;
+    }
+    // If grace period, keep combo but reset angle tracking
+    stageGrace = false;
+    comboTotalAngle = 0;
+  }
+}
+
+// --- Collision ---
+function checkCollisions() {
+  for (let bi = bullets.length - 1; bi >= 0; bi--) {
+    const b = bullets[bi];
+    let hit = false;
+
+    // Check enemies
+    for (const e of enemies) {
+      if (!e.alive) continue;
+      const dx = b.x - e.x;
+      const dy = b.y - e.y;
+      if (dx * dx + dy * dy < (ENTITY_RADIUS + BULLET_RADIUS) ** 2) {
+        e.alive = false;
+        e.hitTime = performance.now();
+        hit = true;
+
+        // Score & combo
+        if (comboTotalAngle < TWO_PI || combo === 0) {
+          combo++;
+        } else {
+          combo = 1;
+        }
+        comboTotalAngle = 0;
+
+        const comboBonus = Math.max(0, (combo - 1)) * 50;
+        score += 100 + comboBonus;
+
+        // Particles
+        spawnParticles(e.x, e.y, '#ff4444', 8);
+
+        // Vibration
+        if (navigator.vibrate) navigator.vibrate(50);
+
+        // Check stage clear
+        if (enemies.every(en => !en.alive)) {
+          setTimeout(nextStage, 300);
+        }
+        break;
+      }
+    }
+
+    if (hit) {
+      bullets.splice(bi, 1);
+      continue;
+    }
+
+    // Check bombs
+    for (const bm of bombs) {
+      if (bm.exploded) continue;
+      const dx = b.x - bm.x;
+      const dy = b.y - bm.y;
+      if (dx * dx + dy * dy < (ENTITY_RADIUS + BULLET_RADIUS) ** 2) {
+        bm.exploded = true;
+        hit = true;
+        dyingBomb = bm;
+        dyingTimer = 0;
+        state = 'dying';
+        spawnParticles(bm.x, bm.y, '#ff8800', 16);
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+        break;
+      }
+    }
+
+    if (hit) {
+      bullets.splice(bi, 1);
+    }
+  }
+}
+
+// --- Particles ---
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * TWO_PI;
+    const speed = 80 + Math.random() * 160;
+    particles.push({
+      x, y,
+      dx: Math.cos(angle) * speed,
+      dy: Math.sin(angle) * speed,
+      life: 0.5 + Math.random() * 0.3,
+      maxLife: 0.5 + Math.random() * 0.3,
+      color,
+      radius: 2 + Math.random() * 3,
+    });
+  }
+}
+
+// --- Update ---
+function update(dt) {
+  if (state === 'playing') {
+    const prevAngle = gunAngle;
+    gunAngle = (gunAngle + rotSpeed * dt) % TWO_PI;
+    const rotated = rotSpeed * dt;
+    comboTotalAngle += rotated;
+
+    // Stage grace tracking
+    if (stageGrace) {
+      stageGraceAngle += rotated;
+      if (stageGraceAngle >= TWO_PI) {
+        // Grace expired without shooting - reset combo
+        combo = 0;
+        stageGrace = false;
+      }
+    }
+  }
+
+  if (state === 'dying') {
+    dyingTimer += dt;
+    if (dyingTimer >= 1.5) {
+      state = 'gameover';
+      showGameOver();
+    }
+  }
+
+  // Update bullets
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.x += b.dx * dt;
+    b.y += b.dy * dt;
+    if (b.x < -50 || b.x > canvas.width + 50 || b.y < -50 || b.y > canvas.height + 50) {
+      bullets.splice(i, 1);
+    }
+  }
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.dx * dt;
+    p.y += p.dy * dt;
+    p.life -= dt;
+    if (p.life <= 0) {
+      particles.splice(i, 1);
+    }
+  }
+
+  if (state === 'playing') {
+    checkCollisions();
+  }
+}
+
+// --- Draw ---
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Ring guide (subtle)
+  ctx.beginPath();
+  ctx.arc(cx, cy, ringRadius, 0, TWO_PI);
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Bombs
+  for (const bm of bombs) {
+    if (bm.exploded) {
+      // Explosion flash
+      const t = dyingTimer / 1.5;
+      const alpha = Math.max(0, 1 - t);
+      ctx.beginPath();
+      ctx.arc(bm.x, bm.y, ENTITY_RADIUS * (1 + t * 3), 0, TWO_PI);
+      ctx.fillStyle = `rgba(255, 136, 0, ${alpha * 0.6})`;
+      ctx.fill();
+      continue;
+    }
+    // Bomb body
+    ctx.beginPath();
+    ctx.arc(bm.x, bm.y, ENTITY_RADIUS, 0, TWO_PI);
+    ctx.fillStyle = '#555';
+    ctx.fill();
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Fuse
+    ctx.beginPath();
+    ctx.moveTo(bm.x, bm.y - ENTITY_RADIUS);
+    ctx.lineTo(bm.x + 6, bm.y - ENTITY_RADIUS - 10);
+    ctx.strokeStyle = '#cc8833';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Spark
+    ctx.beginPath();
+    ctx.arc(bm.x + 6, bm.y - ENTITY_RADIUS - 10, 3, 0, TWO_PI);
+    ctx.fillStyle = '#ffcc00';
+    ctx.fill();
+    // Label
+    ctx.fillStyle = '#ff4444';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('💣', bm.x, bm.y + 1);
+  }
+
+  // Enemies
+  for (const e of enemies) {
+    if (!e.alive) {
+      // Hit flash
+      const elapsed = (performance.now() - e.hitTime) / 1000;
+      if (elapsed < 0.3) {
+        const alpha = 1 - elapsed / 0.3;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, ENTITY_RADIUS * (1 + elapsed * 2), 0, TWO_PI);
+        ctx.fillStyle = `rgba(255, 68, 68, ${alpha * 0.5})`;
+        ctx.fill();
+      }
+      continue;
+    }
+    // Target circle
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, ENTITY_RADIUS, 0, TWO_PI);
+    ctx.fillStyle = '#cc2233';
+    ctx.fill();
+    ctx.strokeStyle = '#ff4466';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Inner circle
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, ENTITY_RADIUS * 0.5, 0, TWO_PI);
+    ctx.fillStyle = '#ff6677';
+    ctx.fill();
+    // Crosshair lines
+    ctx.strokeStyle = '#ff8899';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(e.x - ENTITY_RADIUS, e.y);
+    ctx.lineTo(e.x + ENTITY_RADIUS, e.y);
+    ctx.moveTo(e.x, e.y - ENTITY_RADIUS);
+    ctx.lineTo(e.x, e.y + ENTITY_RADIUS);
+    ctx.stroke();
+  }
+
+  // Bullets
+  for (const b of bullets) {
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, BULLET_RADIUS, 0, TWO_PI);
+    ctx.fillStyle = '#ffdd44';
+    ctx.fill();
+    ctx.shadowColor = '#ffdd44';
+    ctx.shadowBlur = 8;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Laser guide
+  if (state === 'playing' || state === 'dying') {
+    const laserLen = Math.max(canvas.width, canvas.height);
+    const lx = cx + Math.cos(gunAngle) * GUN_LENGTH;
+    const ly = cy + Math.sin(gunAngle) * GUN_LENGTH;
+    const ex = cx + Math.cos(gunAngle) * laserLen;
+    const ey = cy + Math.sin(gunAngle) * laserLen;
+
+    const grad = ctx.createLinearGradient(lx, ly, ex, ey);
+    grad.addColorStop(0, 'rgba(255, 50, 50, 0.6)');
+    grad.addColorStop(0.3, 'rgba(255, 50, 50, 0.2)');
+    grad.addColorStop(1, 'rgba(255, 50, 50, 0)');
+
+    ctx.beginPath();
+    ctx.moveTo(lx, ly);
+    ctx.lineTo(ex, ey);
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // Gun (center)
+  if (state === 'playing' || state === 'dying') {
+    // Gun body
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(gunAngle);
+
+    // Barrel
+    ctx.fillStyle = '#ddd';
+    ctx.fillRect(0, -GUN_WIDTH / 2, GUN_LENGTH, GUN_WIDTH);
+    ctx.strokeStyle = '#999';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0, -GUN_WIDTH / 2, GUN_LENGTH, GUN_WIDTH);
+
+    // Muzzle
+    ctx.fillStyle = '#aaa';
+    ctx.fillRect(GUN_LENGTH - 4, -GUN_WIDTH / 2 - 2, 6, GUN_WIDTH + 4);
+
+    ctx.restore();
+
+    // Center hub
+    ctx.beginPath();
+    ctx.arc(cx, cy, 12, 0, TWO_PI);
+    ctx.fillStyle = '#16213e';
+    ctx.fill();
+    ctx.strokeStyle = '#00d4ff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // Particles
+  for (const p of particles) {
+    const alpha = p.life / p.maxLife;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius, 0, TWO_PI);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // HUD
+  if (state === 'playing' || state === 'dying') {
+    drawHUD();
+  }
+}
+
+function drawHUD() {
+  const pad = 16;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+
+  // Score
+  ctx.font = 'bold 20px sans-serif';
+  ctx.fillStyle = '#00d4ff';
+  ctx.fillText(`SCORE: ${score}`, pad, pad);
+
+  // Stage & Level
+  ctx.font = '16px sans-serif';
+  ctx.fillStyle = '#888';
+  ctx.fillText(`STAGE ${stage}  Lv.${level}`, pad, pad + 28);
+
+  // Combo
+  if (combo > 1) {
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 28px sans-serif';
+    const pulse = 1 + Math.sin(performance.now() / 150) * 0.1;
+    ctx.save();
+    ctx.translate(cx, cy - ringRadius - 40);
+    ctx.scale(pulse, pulse);
+    ctx.fillStyle = '#ffcc00';
+    ctx.fillText(`COMBO x${combo}`, 0, 0);
+    ctx.restore();
+  }
+
+  // Remaining enemies
+  const remaining = enemies.filter(e => e.alive).length;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'top';
+  ctx.font = '16px sans-serif';
+  ctx.fillStyle = '#ff6677';
+  ctx.fillText(`残り: ${remaining}`, canvas.width - pad, pad);
+}
+
+function showGameOver() {
+  document.getElementById('final-score').textContent = `スコア: ${score}`;
+  document.getElementById('final-stage').textContent = `ステージ ${stage} / レベル ${level}`;
+  document.getElementById('gameover-overlay').classList.remove('hidden');
+}
+
+// --- Game Loop ---
+function loop(timestamp) {
+  if (!lastTime) lastTime = timestamp;
+  let dt = (timestamp - lastTime) / 1000;
+  lastTime = timestamp;
+
+  // Cap dt to prevent large jumps
+  if (dt > 0.1) dt = 0.1;
+
+  // Recalc center on each frame for responsiveness
+  cx = canvas.width / 2;
+  cy = canvas.height / 2;
+
+  update(dt);
+  draw();
+
+  if (state !== 'gameover' && state !== 'start') {
+    animId = requestAnimationFrame(loop);
+  }
+}
+
+// --- Input ---
+function handleShoot(e) {
+  if (e) e.preventDefault();
+  if (state === 'playing') {
+    shoot();
+  }
+}
+
+canvas.addEventListener('click', handleShoot);
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  handleShoot();
+}, { passive: false });
+
+document.addEventListener('keydown', e => {
+  if (e.key === ' ' || e.key === 'Spacebar') {
+    e.preventDefault();
+    handleShoot();
+  }
+});
+
+// --- Overlay buttons ---
+document.getElementById('btn-start').addEventListener('click', startGame);
+document.getElementById('btn-retry').addEventListener('click', startGame);
+
+// Prevent double-tap zoom on mobile
+document.addEventListener('touchstart', e => {
+  if (e.touches.length > 1) e.preventDefault();
+}, { passive: false });
+
+// Initial draw
+cx = canvas.width / 2;
+cy = canvas.height / 2;
+ringRadius = Math.min(cx, cy) * 0.65;
+</script>
+</body>
+</html>
