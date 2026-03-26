@@ -6,13 +6,14 @@
 <title>テトリス</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
   body {
     background: #1a1a2e;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
+    height: 100dvh;
     font-family: 'Segoe UI', sans-serif;
     color: white;
     padding: 8px;
@@ -224,7 +225,13 @@
 
 <script>
 const COLS = 10, ROWS = 20;
-const SIZE = Math.min(30, Math.floor((Math.min(window.innerWidth, 400) - 20) / COLS));
+// モバイルではコントロール・パネルの高さも考慮してブロックサイズを決定
+const isMobile = window.innerWidth <= 560;
+const sizeByW = Math.floor((window.innerWidth - 20) / COLS);
+const sizeByH = isMobile
+  ? Math.floor((window.innerHeight - 280) / ROWS)  // コントロール約260px + 余白
+  : Math.floor((window.innerHeight - 40) / ROWS);
+const SIZE = Math.max(Math.min(sizeByW, sizeByH, 30), 18);
 
 const canvas = document.getElementById('board');
 canvas.width  = SIZE * COLS;
@@ -439,7 +446,7 @@ function startGame() {
   document.getElementById('overlay').style.display = 'none';
   document.getElementById('start-overlay').style.display = 'none';
   board = newBoard();
-  bag = []; // ゲーム開始時にbagをリセット
+  bag = [];
   current = randomPiece();
   next = randomPiece();
   score = 0; lines = 0; level = 1;
