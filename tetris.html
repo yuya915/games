@@ -63,6 +63,7 @@
   .controls span {
     color: #ccc;
   }
+  .mobile-hint { display: none; }
   #overlay {
     position: fixed;
     inset: 0;
@@ -112,38 +113,6 @@
   }
   #start-overlay button:hover { background: #00aacc; }
 
-  #mobile-controls {
-    display: none;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    margin-top: 16px;
-  }
-  .ctrl-row {
-    display: flex;
-    gap: 10px;
-    justify-content: center;
-  }
-  .ctrl-btn {
-    width: 68px;
-    height: 68px;
-    font-size: 26px;
-    background: rgba(255,255,255,0.08);
-    color: white;
-    border: 1px solid #555;
-    border-radius: 10px;
-    cursor: pointer;
-    user-select: none;
-    -webkit-user-select: none;
-    touch-action: manipulation;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.1s;
-  }
-  .ctrl-btn:active { background: rgba(0,212,255,0.3); }
-  .ctrl-btn.wide { width: 148px; font-size: 14px; font-weight: bold; letter-spacing: 2px; }
-
   @media (max-width: 560px) {
     .container {
       flex-direction: column;
@@ -161,8 +130,8 @@
       padding: 8px 12px;
       min-width: 80px;
     }
-    .panel-box.controls-box { display: none; }
-    #mobile-controls { display: flex; }
+    .desktop-hint { display: none; }
+    .mobile-hint  { display: block; }
   }
 </style>
 </head>
@@ -187,7 +156,7 @@
       <h3>NEXT</h3>
       <canvas id="next-canvas" width="110" height="80"></canvas>
     </div>
-    <div class="panel-box controls-box controls">
+    <div class="panel-box desktop-hint controls">
       <h3 style="margin-bottom:8px">操作</h3>
       <div><span>← →</span> 移動</div>
       <div><span>↑</span> 回転</div>
@@ -195,20 +164,13 @@
       <div><span>Space</span> 落下</div>
       <div><span>P</span> ポーズ</div>
     </div>
-  </div>
-</div>
-
-<div id="mobile-controls">
-  <div class="ctrl-row">
-    <div class="ctrl-btn" id="btn-rotate">↑</div>
-  </div>
-  <div class="ctrl-row">
-    <div class="ctrl-btn" id="btn-left">←</div>
-    <div class="ctrl-btn" id="btn-down">↓</div>
-    <div class="ctrl-btn" id="btn-right">→</div>
-  </div>
-  <div class="ctrl-row">
-    <div class="ctrl-btn wide" id="btn-drop">HARD DROP</div>
+    <div class="panel-box mobile-hint controls">
+      <h3 style="margin-bottom:8px">操作</h3>
+      <div><span>タップ</span> 回転</div>
+      <div><span>←→ 払い</span> 移動</div>
+      <div><span>↓ ゆっくり</span> 下へ</div>
+      <div><span>↓ 素早く</span> 落下</div>
+    </div>
   </div>
 </div>
 
@@ -225,11 +187,10 @@
 
 <script>
 const COLS = 10, ROWS = 20;
-// モバイルではコントロール・パネルの高さも考慮してブロックサイズを決定
 const isMobile = window.innerWidth <= 560;
 const sizeByW = Math.floor((window.innerWidth - 20) / COLS);
 const sizeByH = isMobile
-  ? Math.floor((window.innerHeight - 280) / ROWS)  // コントロール約260px + 余白
+  ? Math.floor((window.innerHeight - 80) / ROWS)
   : Math.floor((window.innerHeight - 40) / ROWS);
 const SIZE = Math.max(Math.min(sizeByW, sizeByH, 30), 18);
 
@@ -262,7 +223,7 @@ function newBoard() {
   return Array.from({length: ROWS}, () => Array(COLS).fill(null));
 }
 
-// 7-bagランダマイザー: 7種全て出てから次の袋へ
+// 7-bagランダマイザー
 let bag = [];
 function refillBag() {
   bag = Object.keys(SHAPES);
@@ -457,6 +418,7 @@ function startGame() {
   animId = requestAnimationFrame(loop);
 }
 
+// キーボード操作
 document.addEventListener('keydown', e => {
   if (gameOver) return;
   switch(e.key) {
@@ -483,53 +445,56 @@ document.addEventListener('keydown', e => {
   }
 });
 
-(function setupMobileControls() {
-  let repeatTimer = null;
+// タッチジェスチャー操作
+(function setupGestures() {
+  let startX, startY, startTime, lastX, dragAccum;
 
-  function startRepeat(action) {
-    action();
-    repeatTimer = setInterval(action, 90);
-  }
-  function stopRepeat() {
-    clearInterval(repeatTimer);
-    repeatTimer = null;
-  }
+  canvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    const t = e.touches[0];
+    startX = lastX = t.clientX;
+    startY = t.clientY;
+    startTime = Date.now();
+    dragAccum = 0;
+  }, {passive: false});
 
-  function addRepeat(id, action) {
-    const el = document.getElementById(id);
-    el.addEventListener('touchstart', e => {
-      e.preventDefault();
-      if (gameOver || paused) return;
-      startRepeat(action);
-    }, {passive: false});
-    ['touchend', 'touchcancel'].forEach(ev =>
-      el.addEventListener(ev, e => { e.preventDefault(); stopRepeat(); }, {passive: false})
-    );
-  }
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (!current || gameOver || paused) return;
+    const t = e.touches[0];
+    dragAccum += t.clientX - lastX;
+    lastX = t.clientX;
+    while (dragAccum >= SIZE)  { if (valid(current,  1)) current.x++; dragAccum -= SIZE; }
+    while (dragAccum <= -SIZE) { if (valid(current, -1)) current.x--; dragAccum += SIZE; }
+  }, {passive: false});
 
-  function addTap(id, action) {
-    const el = document.getElementById(id);
-    el.addEventListener('touchstart', e => {
-      e.preventDefault();
-      if (gameOver || paused) return;
-      action();
-    }, {passive: false});
-  }
+  canvas.addEventListener('touchend', e => {
+    e.preventDefault();
+    if (!current || gameOver || paused) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+    const dt = Date.now() - startTime;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
 
-  addRepeat('btn-left',  () => { if (valid(current, -1)) current.x--; });
-  addRepeat('btn-right', () => { if (valid(current,  1)) current.x++; });
-  addRepeat('btn-down',  () => {
-    if (valid(current, 0, 1)) { current.y++; fallAcc = 0; }
-    else lock();
-  });
-  addTap('btn-rotate', () => {
-    const rot = rotate(current.shape);
-    if (valid(current, 0, 0, rot)) current.shape = rot;
-  });
-  addTap('btn-drop', () => {
-    while (valid(current, 0, 1)) current.y++;
-    lock();
-  });
+    if (absDx < 10 && absDy < 10) {
+      // タップ → 回転
+      const rot = rotate(current.shape);
+      if (valid(current, 0, 0, rot)) current.shape = rot;
+    } else if (absDy > absDx && dy > 30) {
+      // 下スワイプ
+      if (absDy / dt >= 0.5) {
+        // 素早い → ハードドロップ
+        while (valid(current, 0, 1)) current.y++;
+        lock();
+      } else {
+        // ゆっくり → ソフトドロップ1段
+        if (valid(current, 0, 1)) { current.y++; fallAcc = 0; }
+        else lock();
+      }
+    }
+  }, {passive: false});
 })();
 </script>
 </body>
