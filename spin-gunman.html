@@ -343,6 +343,11 @@ function update(dt) {
     const rotated = rotSpeed * dt;
     comboTotalAngle += rotated;
 
+    // Combo expires after 1 full rotation without a kill
+    if (combo > 0 && !stageGrace && comboTotalAngle >= TWO_PI) {
+      combo = 0;
+    }
+
     // Stage grace tracking
     if (stageGrace) {
       stageGraceAngle += rotated;
