@@ -70,6 +70,37 @@
   .ov-btn {
     display: none;
   }
+  .btn-quit {
+    padding: 8px 16px;
+    font-size: 13px;
+    background: transparent;
+    color: #888;
+    border: 1px solid #444;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background 0.15s, color 0.15s;
+  }
+  .btn-quit:hover {
+    background: #ff4444;
+    color: #fff;
+    border-color: #ff4444;
+  }
+  .btn-back {
+    margin-top: 4px;
+    padding: 10px 30px;
+    font-size: 14px;
+    background: transparent;
+    color: #888;
+    border: 1px solid #666;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  .btn-back:hover {
+    background: #333;
+    color: #fff;
+  }
   .mobile-hint { display: none; }
   #overlay {
     position: fixed;
@@ -127,11 +158,15 @@
       gap: 12px;
     }
     .panel {
+      order: 2;
       width: auto;
       flex-direction: row;
       flex-wrap: wrap;
       justify-content: center;
       gap: 10px;
+    }
+    #board-wrap {
+      order: 1;
     }
     .panel-box {
       padding: 8px 12px;
@@ -172,14 +207,6 @@
 <body>
 
 <div class="container">
-  <div id="board-wrap">
-    <canvas id="board"></canvas>
-    <button class="ov-btn" id="btn-rotate">↑回転</button>
-    <button class="ov-btn" id="btn-hard">HARD</button>
-    <button class="ov-btn" id="btn-left">←</button>
-    <button class="ov-btn" id="btn-down">↓</button>
-    <button class="ov-btn" id="btn-right">→</button>
-  </div>
   <div class="panel">
     <div class="panel-box">
       <h3>スコア</h3>
@@ -212,6 +239,15 @@
       <div><span>↓ ゆっくり</span> 下へ</div>
       <div><span>↓ 素早く</span> 落下</div>
     </div>
+    <button class="btn-quit" onclick="location.href='index.html'">ゲーム終了</button>
+  </div>
+  <div id="board-wrap">
+    <canvas id="board"></canvas>
+    <button class="ov-btn" id="btn-rotate">↑回転</button>
+    <button class="ov-btn" id="btn-hard">HARD</button>
+    <button class="ov-btn" id="btn-left">←</button>
+    <button class="ov-btn" id="btn-down">↓</button>
+    <button class="ov-btn" id="btn-right">→</button>
   </div>
 </div>
 
@@ -224,6 +260,7 @@
   <h2>GAME OVER</h2>
   <p id="final-score"></p>
   <button onclick="startGame()">もう一度</button>
+  <button class="btn-back" onclick="location.href='index.html'">ゲーム一覧に戻る</button>
 </div>
 
 <script>
