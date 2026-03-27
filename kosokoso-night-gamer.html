@@ -95,20 +95,17 @@ function updateMom(dt){
       case'A':momMode='B';momTimer=df.bDur+Math.random()*1000;break;
       case'B':
         if(Math.random()<df.bToA){momMode='A';momTimer=1500+Math.random()*2000;}
-        else{momMode='C';momTimer=df.cDur+Math.random()*500;
-          // Check if player is caught
-          if(playerPlaying){gameOver('お母さんに見つかった！');}
-        }
+        else{momMode='C';momTimer=df.cDur+Math.random()*500;}
         break;
       case'C':
-        // Check again at transition
+        momMode='D';momTimer=df.dDur;
         if(playerPlaying){gameOver('お母さんに見つかった！');}
-        momMode='D';momTimer=df.dDur;break;
+        break;
       case'D':momMode='A';momTimer=2500+Math.random()*2000;safeTimer=df.safeTime;break;
     }
   }
-  // Continuous check during mode C
-  if(momMode==='C'&&playerPlaying){gameOver('お母さんに見つかった！');}
+  // Continuous check during mode D
+  if(momMode==='D'&&playerPlaying){gameOver('お母さんに見つかった！');}
 }
 
 // Score
