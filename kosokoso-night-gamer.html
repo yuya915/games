@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>コソコソ・ナイトゲーマー</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;touch-action:none}
+body{background:#0a0a1a;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Segoe UI',sans-serif;color:#fff;height:100dvh}
+#wrapper{display:flex;flex-direction:column;align-items:center;gap:4px;max-width:480px;width:100%}
+canvas{display:block;border-radius:8px;width:100%;max-width:480px}
+#topCanvas{border:2px solid #334}
+#botCanvas{border:2px solid #446}
+#ui{display:flex;justify-content:space-between;width:100%;max-width:480px;padding:0 4px;font-size:14px;color:#aaa}
+#controls{display:flex;gap:12px;margin-top:6px}
+#controls button{background:#223;border:1px solid #556;color:#fff;padding:10px 20px;border-radius:8px;font-size:16px;cursor:pointer;touch-action:manipulation}
+#controls button:active{background:#445}
+#overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:10}
+#overlay h2{font-size:28px;margin-bottom:12px}
+#overlay p{color:#aaa;margin-bottom:8px;font-size:14px}
+#overlay button{background:#e94560;border:none;color:#fff;padding:14px 36px;border-radius:8px;font-size:18px;cursor:pointer;margin-top:16px}
+#overlay select{background:#223;color:#fff;border:1px solid #556;padding:8px 16px;border-radius:6px;font-size:16px;margin-top:8px}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div id="wrapper">
+  <div id="ui">
+    <span id="scoreDisp">スコア: 0</span>
+    <span id="modeDisp">😴 寝たフリ中</span>
+    <span id="lvDisp">Lv.1</span>
+  </div>
+  <canvas id="topCanvas" width="480" height="200"></canvas>
+  <canvas id="botCanvas" width="480" height="220"></canvas>
+  <div id="controls">
+    <button id="btnUp">▲ 上</button>
+    <button id="btnAction">💤 起きる / 寝る</button>
+    <button id="btnDown">▼ 下</button>
+  </div>
+</div>
+
+<div id="overlay">
+  <h2>🌙 コソコソ・ナイトゲーマー</h2>
+  <p>お母さんにバレずにこっそりゲームしよう！</p>
+  <p>スペース / ボタン：起きる・寝る切替</p>
+  <p>↑↓キー / ボタン：ライン移動</p>
+  <p>難易度:</p>
+  <select id="lvSelect">
+    <option value="1">Lv.1 - かんたん</option>
+    <option value="2">Lv.2 - ふつう</option>
+    <option value="3">Lv.3 - むずかしい</option>
+    <option value="4">Lv.4 - 激ムズ</option>
+    <option value="5">Lv.5 - 鬼</option>
+  </select>
+  <button id="btnStart">スタート</button>
+  <p id="finalScore" class="hidden" style="color:#e94560;font-size:20px;margin-top:12px"></p>
+</div>
+
+<script>
+(function(){
+const TC=document.getElementById('topCanvas'),BC=document.getElementById('botCanvas');
+const tx=TC.getContext('2d'),bx=BC.getContext('2d');
+const overlay=document.getElementById('overlay'),btnStart=document.getElementById('btnStart');
+const scoreDisp=document.getElementById('scoreDisp'),modeDisp=document.getElementById('modeDisp');
+const lvDisp=document.getElementById('lvDisp'),finalScore=document.getElementById('finalScore');
+const lvSelect=document.getElementById('lvSelect');
+
+// Game state
+let running=false,score=0,level=1,playerLane=1,playerPlaying=false;
+let momMode='A',momTimer=0,safeTimer=0,gameOverReason='';
+let enemies=[],spawnTimer=0,animFrame=0,lastTime=0;
+let freezeTimer=0; // for game over freeze effect
+
+// Difficulty settings per level
+function getDiff(){
+  const d={
+    1:{bDur:3000,bToA:0.15,cDur:2500,dDur:3000,safeTime:2500,transSpeed:1,enemySpeed:2,spawnRate:1400},
+    2:{bDur:2500,bToA:0.2,cDur:2000,dDur:2500,safeTime:2000,transSpeed:1.2,enemySpeed:2.5,spawnRate:1200},
+    3:{bDur:1800,bToA:0.35,cDur:1500,dDur:2000,safeTime:1500,transSpeed:1.5,enemySpeed:3,spawnRate:1000},
+    4:{bDur:1200,bToA:0.45,cDur:1200,dDur:1800,safeTime:1200,transSpeed:1.8,enemySpeed:3.5,spawnRate:850},
+    5:{bDur:800,bToA:0.5,cDur:900,dDur:1500,safeTime:800,transSpeed:2.2,enemySpeed:4,spawnRate:700}
+  };
+  return d[level];
+}
+
+// Mom state machine
+function initMom(){momMode='A';momTimer=2000+Math.random()*2000;safeTimer=0;}
+function updateMom(dt){
+  const df=getDiff();
+  if(safeTimer>0){safeTimer-=dt;return;}
+  momTimer-=dt*df.transSpeed;
+  if(momTimer<=0){
+    switch(momMode){
+      case'A':momMode='B';momTimer=df.bDur+Math.random()*1000;break;
+      case'B':
+        if(Math.random()<df.bToA){momMode='A';momTimer=1500+Math.random()*2000;}
+        else{momMode='C';momTimer=df.cDur+Math.random()*500;
+          // Check if player is caught
+          if(playerPlaying){gameOver('お母さんに見つかった！');}
+        }
+        break;
+      case'C':
+        // Check again at transition
+        if(playerPlaying){gameOver('お母さんに見つかった！');}
+        momMode='D';momTimer=df.dDur;break;
+      case'D':momMode='A';momTimer=2500+Math.random()*2000;safeTimer=df.safeTime;break;
+    }
+  }
+  // Continuous check during mode C
+  if(momMode==='C'&&playerPlaying){gameOver('お母さんに見つかった！');}
+}
+
+// Score
+function getMultiplier(){
+  if(momMode==='C')return 3.0;
+  if(momMode==='B')return 1.5;
+  return 1.0;
+}
+function updateScore(dt){
+  if(playerPlaying){score+=dt/1000*10*getMultiplier();}
+  scoreDisp.textContent='スコア: '+Math.floor(score);
+}
+
+// Enemies
+function spawnEnemy(){
+  // Always ensure at least one lane is safe
+  const lanes=[0,1,2];
+  const safeLane=lanes[Math.floor(Math.random()*3)];
+  for(let i=0;i<3;i++){
+    if(i!==safeLane&&Math.random()<0.5){
+      enemies.push({x:500,lane:i,w:30,h:28});
+    }
+  }
+  // Ensure at least one enemy
+  if(enemies.filter(e=>e.x>450).length===0){
+    let l=safeLane===0?1:0;
+    enemies.push({x:500,lane:l,w:30,h:28});
+  }
+}
+function updateEnemies(dt){
+  if(!playerPlaying)return;
+  const df=getDiff();
+  spawnTimer-=dt;
+  if(spawnTimer<=0){spawnEnemy();spawnTimer=df.spawnRate+Math.random()*400;}
+  for(let e of enemies){e.x-=df.enemySpeed*dt/16;}
+  // Collision
+  const py=getLaneY(playerLane);
+  for(let e of enemies){
+    const ey=getLaneYBot(e.lane);
+    if(e.x<70&&e.x+e.w>40&&Math.abs(py-ey)<20){
+      gameOver('ミニゲームでミス！');return;
+    }
+  }
+  enemies=enemies.filter(e=>e.x>-40);
+}
+function getLaneY(l){return 50+l*70;}
+function getLaneYBot(l){return 50+l*70;}
+
+// Drawing - Top panel
+function drawTop(){
+  tx.fillStyle='#1a1a3a';tx.fillRect(0,0,480,200);
+  // Room
+  tx.fillStyle='#222244';tx.fillRect(20,40,300,140); // room bg
+  // Floor
+  tx.fillStyle='#2a2a4a';tx.fillRect(20,150,300,30);
+  // Bed
+  tx.fillStyle='#4a3a2a';tx.fillRect(40,90,140,65); // bed frame
+  tx.fillStyle='#6a8aaa';tx.fillRect(45,85,130,55); // blanket
+  tx.fillStyle='#8ab0d0';tx.fillRect(45,80,40,30); // pillow
+
+  // Child
+  if(playerPlaying){
+    // Sitting up
+    tx.fillStyle='#ffcc88';tx.beginPath();tx.arc(110,72,14,0,Math.PI*2);tx.fill(); // head
+    tx.fillStyle='#445';tx.fillRect(100,86,20,20); // body sitting
+    // Eyes open
+    tx.fillStyle='#222';
+    tx.fillRect(105,69,4,4);tx.fillRect(115,69,4,4);
+    // Game device glow
+    tx.fillStyle='rgba(100,200,255,0.3)';tx.fillRect(90,95,40,15);
+    tx.fillStyle='#4af';tx.fillRect(95,97,30,10);
+    // Zzz gone
+    modeDisp.textContent='🎮 プレイ中 (x'+getMultiplier()+')';
+    modeDisp.style.color='#4af';
+  } else {
+    // Lying down
+    tx.fillStyle='#ffcc88';tx.beginPath();tx.arc(75,100,12,0,Math.PI*2);tx.fill(); // head
+    // Eyes closed
+    tx.strokeStyle='#222';tx.lineWidth=2;
+    tx.beginPath();tx.moveTo(70,99);tx.lineTo(76,99);tx.stroke();
+    tx.beginPath();tx.moveTo(78,99);tx.lineTo(84,99);tx.stroke();
+    // Blanket covers body
+    tx.fillStyle='#6a8aaa';tx.fillRect(88,90,85,45);
+    // Zzz
+    const zOff=Math.sin(animFrame/30)*5;
+    tx.fillStyle='#aaa';tx.font='16px sans-serif';
+    tx.fillText('z',92,80+zOff);tx.font='12px sans-serif';tx.fillText('z',100,72+zOff);
+    tx.font='10px sans-serif';tx.fillText('z',106,66+zOff);
+    modeDisp.textContent='😴 寝たフリ中';
+    modeDisp.style.color='#aaa';
+  }
+
+  // Door area
+  const doorX=360,doorY=45,doorW=60,doorH=130;
+  tx.fillStyle='#3a2a1a';tx.fillRect(doorX-5,doorY-5,doorW+10,doorH+10); // door frame
+
+  switch(momMode){
+    case'A':
+      tx.fillStyle='#5a4a3a';tx.fillRect(doorX,doorY,doorW,doorH); // closed door
+      tx.fillStyle='#aa8855';tx.beginPath();tx.arc(doorX+50,doorY+70,4,0,Math.PI*2);tx.fill(); // knob
+      // "静か" label
+      tx.fillStyle='#4a4';tx.font='12px sans-serif';tx.fillText('😴 静か',doorX+5,doorY-10);
+      break;
+    case'B':
+      // Rattling door
+      const shake=Math.sin(animFrame/2)*3;
+      tx.fillStyle='#5a4a3a';tx.fillRect(doorX+shake,doorY,doorW,doorH);
+      tx.fillStyle='#aa8855';tx.beginPath();tx.arc(doorX+50+shake,doorY+70,4,0,Math.PI*2);tx.fill();
+      tx.fillStyle='#da4';tx.font='12px sans-serif';tx.fillText('⚠ ガタガタ…',doorX-15,doorY-10);
+      break;
+    case'C':
+      // Door slightly open, mom's eye
+      tx.fillStyle='#5a4a3a';tx.fillRect(doorX+15,doorY,doorW-10,doorH); // shifted door
+      tx.fillStyle='#111';tx.fillRect(doorX,doorY,14,doorH); // gap
+      // Mom's eye
+      tx.fillStyle='#fff';tx.beginPath();tx.ellipse(doorX+7,doorY+55,5,8,0,0,Math.PI*2);tx.fill();
+      tx.fillStyle='#d22';tx.beginPath();tx.arc(doorX+7,doorY+55,3,0,Math.PI*2);tx.fill();
+      tx.fillStyle='#111';tx.beginPath();tx.arc(doorX+7,doorY+55,1.5,0,Math.PI*2);tx.fill();
+      tx.fillStyle='#f44';tx.font='bold 12px sans-serif';tx.fillText('👁 覗いてる！',doorX-20,doorY-10);
+      break;
+    case'D':
+      // Door fully open, mom visible
+      tx.fillStyle='#5a4a3a';tx.fillRect(doorX+doorW-10,doorY,12,doorH); // door pushed back
+      tx.fillStyle='#1a1a3a';tx.fillRect(doorX,doorY,doorW-10,doorH); // open space
+      // Mom silhouette (pop style)
+      tx.fillStyle='#cc88aa';tx.beginPath();tx.arc(doorX+25,doorY+35,18,0,Math.PI*2);tx.fill(); // head
+      tx.fillStyle='#aa6688';tx.fillRect(doorX+12,doorY+53,26,50); // body
+      // Face
+      tx.fillStyle='#fff';
+      tx.beginPath();tx.arc(doorX+20,doorY+33,4,0,Math.PI*2);tx.fill();
+      tx.beginPath();tx.arc(doorX+32,doorY+33,4,0,Math.PI*2);tx.fill();
+      tx.fillStyle='#222';
+      tx.beginPath();tx.arc(doorX+20,doorY+33,2,0,Math.PI*2);tx.fill();
+      tx.beginPath();tx.arc(doorX+32,doorY+33,2,0,Math.PI*2);tx.fill();
+      // Mouth
+      tx.strokeStyle='#622';tx.lineWidth=2;
+      tx.beginPath();tx.arc(doorX+26,doorY+43,6,0,Math.PI);tx.stroke();
+      tx.fillStyle='#f66';tx.font='bold 12px sans-serif';tx.fillText('😡 確認中！',doorX-15,doorY-10);
+      break;
+  }
+
+  // Safe timer indicator
+  if(safeTimer>0){
+    tx.fillStyle='#4a4';tx.font='12px sans-serif';
+    tx.fillText('✨ 安全タイム！',200,20);
+  }
+
+  // Multiplier display
+  const m=getMultiplier();
+  if(m>1){
+    tx.fillStyle=m>=3?'#f44':'#da4';tx.font='bold 16px sans-serif';
+    tx.fillText('x'+m+' ボーナス！',20,25);
+  }
+}
+
+// Drawing - Bottom panel (mini-game)
+function drawBot(){
+  bx.fillStyle='#0a1a0a';bx.fillRect(0,0,480,220);
+  // Game screen border
+  bx.strokeStyle='#2a4a2a';bx.lineWidth=2;bx.strokeRect(5,5,470,210);
+  // Lane lines
+  bx.strokeStyle='#1a3a1a';bx.lineWidth=1;
+  for(let i=1;i<3;i++){
+    bx.beginPath();bx.moveTo(10,10+i*66);bx.lineTo(470,10+i*66);bx.stroke();
+  }
+  // Lane labels
+  bx.fillStyle='#2a4a2a';bx.font='10px sans-serif';
+  bx.fillText('▲',8,55);bx.fillText('■',8,125);bx.fillText('▼',8,195);
+
+  if(!playerPlaying){
+    // Paused overlay
+    bx.fillStyle='rgba(0,0,0,0.5)';bx.fillRect(0,0,480,220);
+    bx.fillStyle='#888';bx.font='24px sans-serif';bx.textAlign='center';
+    bx.fillText('⏸ 一時停止中',240,115);
+    bx.textAlign='left';
+    // Still draw player dimmed
+    drawPlayer(0.3);
+    return;
+  }
+
+  // Scrolling background stars
+  bx.fillStyle='#1a2a1a';
+  for(let i=0;i<15;i++){
+    const sx=(i*97+animFrame*0.5)%480;
+    const sy=(i*61)%200+10;
+    bx.fillRect(sx,sy,2,2);
+  }
+
+  // Draw enemies
+  for(let e of enemies){
+    const ey=getLaneYBot(e.lane);
+    // Enemy body (spike/obstacle)
+    bx.fillStyle='#e44';
+    bx.beginPath();
+    bx.moveTo(e.x,ey-14);bx.lineTo(e.x+30,ey);bx.lineTo(e.x,ey+14);bx.lineTo(e.x+10,ey);
+    bx.closePath();bx.fill();
+    bx.fillStyle='#f66';
+    bx.beginPath();bx.arc(e.x+15,ey,6,0,Math.PI*2);bx.fill();
+    // Eyes
+    bx.fillStyle='#fff';bx.fillRect(e.x+12,ey-3,3,3);bx.fillRect(e.x+18,ey-3,3,3);
+  }
+
+  drawPlayer(1.0);
+}
+
+function drawPlayer(alpha){
+  const py=getLaneY(playerLane);
+  bx.globalAlpha=alpha;
+  // Player character
+  bx.fillStyle='#4af';
+  bx.beginPath();bx.arc(50,py,14,0,Math.PI*2);bx.fill();
+  // Face
+  bx.fillStyle='#fff';bx.fillRect(45,py-4,4,4);bx.fillRect(53,py-4,4,4);
+  bx.fillStyle='#4af';
+  bx.strokeStyle='#fff';bx.lineWidth=1.5;
+  bx.beginPath();bx.arc(50,py+4,5,0,Math.PI);bx.stroke();
+  bx.globalAlpha=1.0;
+}
+
+// Game over
+function gameOver(reason){
+  if(!running)return;
+  gameOverReason=reason;
+  running=false;
+  freezeTimer=1500;
+}
+
+function showGameOver(){
+  finalScore.textContent=gameOverReason+' スコア: '+Math.floor(score);
+  finalScore.classList.remove('hidden');
+  btnStart.textContent='リトライ';
+  overlay.classList.remove('hidden');
+}
+
+// Input
+function togglePlay(){
+  if(!running)return;
+  playerPlaying=!playerPlaying;
+}
+function moveUp(){if(!running||!playerPlaying)return;if(playerLane>0)playerLane--;}
+function moveDown(){if(!running||!playerPlaying)return;if(playerLane<2)playerLane++;}
+
+document.addEventListener('keydown',function(e){
+  if(e.code==='Space'){e.preventDefault();togglePlay();}
+  if(e.code==='ArrowUp'){e.preventDefault();moveUp();}
+  if(e.code==='ArrowDown'){e.preventDefault();moveDown();}
+});
+document.getElementById('btnAction').addEventListener('click',togglePlay);
+document.getElementById('btnUp').addEventListener('click',moveUp);
+document.getElementById('btnDown').addEventListener('click',moveDown);
+
+// Touch swipe
+let touchY=0;
+BC.addEventListener('touchstart',function(e){touchY=e.touches[0].clientY;});
+BC.addEventListener('touchend',function(e){
+  const dy=e.changedTouches[0].clientY-touchY;
+  if(Math.abs(dy)>20){if(dy<0)moveUp();else moveDown();}
+});
+
+// Game loop
+function gameLoop(ts){
+  if(!lastTime)lastTime=ts;
+  let dt=ts-lastTime;lastTime=ts;
+  if(dt>100)dt=100;
+  animFrame++;
+
+  if(running){
+    updateMom(dt);
+    updateEnemies(dt);
+    updateScore(dt);
+  }
+
+  drawTop();
+  drawBot();
+
+  if(!running&&freezeTimer>0){
+    freezeTimer-=dt;
+    // Flash effect
+    if(Math.floor(animFrame/5)%2===0){
+      tx.fillStyle='rgba(255,0,0,0.2)';tx.fillRect(0,0,480,200);
+      bx.fillStyle='rgba(255,0,0,0.2)';bx.fillRect(0,0,480,220);
+    }
+    if(freezeTimer<=0)showGameOver();
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+// Start
+btnStart.addEventListener('click',function(){
+  level=parseInt(lvSelect.value);
+  lvDisp.textContent='Lv.'+level;
+  score=0;playerLane=1;playerPlaying=false;
+  enemies=[];spawnTimer=500;freezeTimer=0;
+  gameOverReason='';
+  finalScore.classList.add('hidden');
+  initMom();
+  running=true;
+  overlay.classList.add('hidden');
+});
+
+requestAnimationFrame(gameLoop);
+})();
+</script>
+</body>
+</html>
