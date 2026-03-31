@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+  <title>ChatGPT回答集計</title>
+</head>
+<body>
+  <h1>ChatGPT回答自動集計</h1>
+
+  <div class="section">
+    <label for="rulePrompt">ルール用プロンプト</label>
+    <textarea id="rulePrompt" rows="3" placeholder="例: 以下のルールに従って回答してください..."></textarea>
+  </div>
+
+  <div class="section">
+    <label for="question">質問内容</label>
+    <textarea id="question" rows="3" placeholder="例: 日本の首都はどこですか？"></textarea>
+  </div>
+
+  <div class="section">
+    <label for="repeatCount">繰り返し回数</label>
+    <input type="number" id="repeatCount" min="1" max="50" value="3">
+  </div>
+
+  <div class="section">
+    <label for="formUrl">GoogleフォームURL</label>
+    <input type="text" id="formUrl" placeholder="https://docs.google.com/forms/d/e/xxxxx/viewform">
+  </div>
+
+  <div class="section">
+    <label>エントリID設定</label>
+    <div class="entry-row">
+      <span class="entry-label">質問:</span>
+      <input type="text" id="entryQuestion" placeholder="entry.123456789">
+    </div>
+    <div id="entryContainer"></div>
+    <p class="hint">※ 回答のエントリIDは繰り返し回数に応じて自動生成されます。下記に入力してください。</p>
+  </div>
+
+  <div class="section">
+    <button id="generateEntries">エントリID欄を生成</button>
+  </div>
+
+  <div class="section">
+    <button id="saveBtn">設定を保存</button>
+    <button id="runBtn" class="primary">実行</button>
+  </div>
+
+  <div id="status" class="status"></div>
+  <div id="log" class="log"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
