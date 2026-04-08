@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>スマートな新世紀17 - パチンコシミュレーター</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    font-family: "Hiragino Sans","Meiryo","Yu Gothic",sans-serif;
+    background: #1a1a2e;
+    color: #fff;
+    min-height: 100vh;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px;
+  }
+  h1 {
+    font-size: 20px;
+    margin-bottom: 10px;
+    color: #ffd54f;
+    text-shadow: 0 0 8px rgba(255,213,79,0.4);
+  }
+
+  /* ===== 上部：制御パネル ===== */
+  .control-panel {
+    width: 100%;
+    max-width: 860px;
+    background: #16213e;
+    border: 2px solid #0f3460;
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    align-items: center;
+    justify-content: center;
+  }
+  .control-panel button {
+    padding: 8px 22px;
+    font-size: 15px;
+    font-weight: bold;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: transform 0.08s, opacity 0.15s;
+  }
+  #startBtn { background: linear-gradient(180deg,#e94560,#c1304a); }
+  #stopBtn  { background: linear-gradient(180deg,#777,#555); }
+  #resetBtn { background: linear-gradient(180deg,#3949ab,#283593); }
+  .control-panel button:hover:not(:disabled) { transform: translateY(-1px); }
+  .control-panel button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .control-panel label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+    color: #e0e0e0;
+  }
+  .control-panel input[type="number"] {
+    width: 64px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    border: 1px solid #555;
+    background: #fff;
+    color: #000;
+    font-size: 13px;
+  }
+
+  /* ===== 中央：メイン演出 ===== */
+  .main-display {
+    width: 100%;
+    max-width: 860px;
+    background: linear-gradient(180deg,#0f3460,#16213e);
+    border: 3px solid #e94560;
+    border-radius: 12px;
+    margin-top: 12px;
+    padding: 14px 16px 18px;
+    position: relative;
+    min-height: 360px;
+    overflow: hidden;
+    transition: background 0.8s;
+  }
+  .main-display.bousou-bg {
+    background: radial-gradient(circle,#a30000 0%,#3a0000 80%);
+  }
+  .status-line {
+    text-align: center;
+    font-size: 22px;
+    font-weight: bold;
+    color: #fff;
+    margin-bottom: 8px;
+    min-height: 30px;
+    letter-spacing: 0.04em;
+  }
+  .status-line.warn { color: #ff3838; text-shadow: 0 0 6px rgba(255,0,0,0.5); }
+
+  .reels {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    padding: 18px 0 10px;
+    perspective: 800px;
+  }
+  .reel {
+    width: 110px;
+    height: 140px;
+    background: #fafafa;
+    border: 4px solid #222;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 92px;
+    font-weight: 900;
+    color: #111;
+    position: relative;
+    overflow: hidden;
+    transform-style: preserve-3d;
+    user-select: none;
+    font-family: "Arial Black","Impact",sans-serif;
+  }
+  .reel.color-blue    { color: #1565c0; }
+  .reel.color-green   { color: #2e7d32; }
+  .reel.color-red     { color: #c62828; }
+  .reel.color-rainbow {
+    background: linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#3d5afe,#d500f9);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    animation: rainbowShift 1.4s linear infinite;
+    background-size: 200% 100%;
+  }
+  @keyframes rainbowShift {
+    from { background-position: 0% 0; }
+    to   { background-position: 200% 0; }
+  }
+  .reel.spin-flip { animation: flipY 0.5s ease-in-out; }
+  @keyframes flipY {
+    0%   { transform: rotateY(0deg); }
+    100% { transform: rotateY(360deg); }
+  }
+
+  /* ===== 収支・統計 ===== */
+  .balance-display {
+    text-align: center;
+    margin-top: 12px;
+  }
+  .balance-display .label {
+    font-size: 12px;
+    color: #b0bec5;
+  }
+  .balance-display .value {
+    font-size: 30px;
+    font-weight: bold;
+    margin-top: 2px;
+  }
+  .balance-display .value.plus  { color: #69f0ae; }
+  .balance-display .value.minus { color: #ff5252; }
+
+  .stats-row {
+    display: flex;
+    justify-content: space-around;
+    margin-top: 8px;
+    font-size: 13px;
+    color: #cfd8dc;
+  }
+
+  /* ===== 告知オーバーレイ ===== */
+  .announce-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.72);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    pointer-events: none;
+  }
+  .announce-overlay.show { display: flex; }
+  .announce-overlay .text {
+    font-size: 46px;
+    font-weight: 900;
+    text-align: center;
+    background: linear-gradient(90deg,#ff1744,#ff9100,#ffea00,#00e676,#00b0ff,#3d5afe,#d500f9);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    text-shadow: 0 0 24px rgba(255,255,255,0.35);
+    animation: pulse 0.55s ease-in-out infinite alternate;
+    padding: 0 12px;
+  }
+  @keyframes pulse {
+    from { transform: scale(1); }
+    to   { transform: scale(1.12); }
+  }
+
+  /* ===== 履歴・ログ ===== */
+  .history-area {
+    width: 100%;
+    max-width: 860px;
+    background: #f5f0e1;
+    color: #3e2723;
+    border-radius: 8px;
+    margin-top: 12px;
+    padding: 12px 14px;
+    min-height: 220px;
+  }
+  .history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    border-bottom: 2px solid #c8b88a;
+    padding-bottom: 6px;
+  }
+  .history-header .summary {
+    font-size: 13px;
+    color: #5d4037;
+    font-weight: bold;
+  }
+  .toggle-btn {
+    padding: 5px 12px;
+    background: #5d4037;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .total-balance {
+    font-size: 24px;
+    font-weight: bold;
+    text-align: center;
+    padding: 8px;
+    background: #fff;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    border: 1px solid #d7c79a;
+  }
+  .total-balance.minus { color: #c62828; }
+  .total-balance.plus  { color: #2e7d32; }
+
+  .history-list {
+    max-height: 240px;
+    overflow-y: auto;
+    font-size: 13px;
+    border: 1px solid #d7c79a;
+    border-radius: 4px;
+    background: #fff;
+  }
+  .history-list .row {
+    padding: 6px 10px;
+    border-bottom: 1px solid #ecdfb8;
+    display: flex;
+    justify-content: space-between;
+    color: #3e2723;
+  }
+  .history-list .row:last-child { border-bottom: none; }
+  .history-list .row:nth-child(odd) { background: #faf6e8; }
+  .history-list .row .right { color: #6d4c41; font-size: 12px; }
+
+  #graphCanvas {
+    width: 100%;
+    height: 240px;
+    background: #fff;
+    border: 1px solid #d7c79a;
+    border-radius: 4px;
+    display: none;
+  }
+  .graph-mode #graphCanvas { display: block; }
+  .graph-mode .history-list { display: none; }
+
+  @media (max-width: 600px) {
+    .reel { width: 80px; height: 110px; font-size: 70px; }
+    .announce-overlay .text { font-size: 30px; }
+    .balance-display .value { font-size: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>スマートな新世紀17</h1>
+
+<div class="control-panel">
+  <button id="startBtn">スタート</button>
+  <button id="stopBtn" disabled>停止</button>
+  <button id="resetBtn">リセット</button>
+  <label><input type="checkbox" id="skipCheck"> 演出スキップ</label>
+  <label><input type="checkbox" id="rushCheck"> ラッシュまで続ける</label>
+  <label>Z(回転/1K): <input type="number" id="zInput" value="18" min="1" max="100" step="0.1"></label>
+  <label>X(円/玉): <input type="number" id="xInput" value="4" min="0.1" max="100" step="0.1"></label>
+</div>
+
+<div class="main-display" id="mainDisplay">
+  <div class="status-line" id="statusLine">通常時</div>
+  <div class="reels">
+    <div class="reel" id="reel1">7</div>
+    <div class="reel" id="reel2">7</div>
+    <div class="reel" id="reel3">7</div>
+  </div>
+  <div class="balance-display">
+    <div class="label">収支</div>
+    <div class="value" id="balanceValue">0 円</div>
+  </div>
+  <div class="stats-row">
+    <span id="spinsStat">回転: 0</span>
+    <span id="payoutStat">出玉: 0発</span>
+    <span id="hitsStat">初当たり: 0回</span>
+  </div>
+  <div class="announce-overlay" id="announceOverlay">
+    <div class="text" id="announceText"></div>
+  </div>
+</div>
+
+<div class="history-area" id="historyArea">
+  <div class="history-header">
+    <span class="summary" id="summaryLine">履歴</span>
+    <button class="toggle-btn" id="toggleBtn">グラフ表示</button>
+  </div>
+  <div class="total-balance" id="totalBalance">0 円</div>
+  <div class="history-list" id="historyList"></div>
+  <canvas id="graphCanvas"></canvas>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ===== 定数 =====
+  const PROB_NORMAL  = 1 / 399.9;   // 通常 / 時短中
+  const PROB_ST      = 1 / 99.6;    // ST中
+  const ST_COUNT     = 163;
+  const JIDAN_COUNT  = 100;
+  const STATE = { NORMAL:'NORMAL', JIDAN:'JIDAN', ST:'ST' };
+  const MAX_SPINS_PER_RUN = 300000; // セーフティ上限
+
+  // ===== ゲーム状態 =====
+  let mode = STATE.NORMAL;
+  let remaining = 0;
+  let totalSpins = 0;
+  let totalPayout = 0;
+  let firstHitCount = 0;
+
+  // 初当たり連チャン中の集計
+  let inFirstHitChain = false;
+  let currentStreak = 0;
+  let currentStreakPayout = 0;
+  let currentBreakdown = [];
+  let currentSpinsBeforeFirstHit = 0;
+  let spinsAccumulator = 0; // 直近の初当たりまでの回転数
+
+  let history = [];        // {firstSpins, ren, payout, breakdown}
+  let balanceCurve = [];   // {spins, balance}
+
+  let isRunning = false;
+  let stopRequested = false;
+
+  // ===== DOM =====
+  const $ = id => document.getElementById(id);
+  const startBtn      = $('startBtn');
+  const stopBtn       = $('stopBtn');
+  const resetBtn      = $('resetBtn');
+  const skipCheck     = $('skipCheck');
+  const rushCheck     = $('rushCheck');
+  const zInput        = $('zInput');
+  const xInput        = $('xInput');
+  const reel1         = $('reel1');
+  const reel2         = $('reel2');
+  const reel3         = $('reel3');
+  const reels         = [reel1, reel2, reel3];
+  const statusLine    = $('statusLine');
+  const balanceValue  = $('balanceValue');
+  const spinsStat     = $('spinsStat');
+  const payoutStat    = $('payoutStat');
+  const hitsStat      = $('hitsStat');
+  const announceOverlay = $('announceOverlay');
+  const announceText  = $('announceText');
+  const mainDisplay   = $('mainDisplay');
+  const totalBalance  = $('totalBalance');
+  const historyList   = $('historyList');
+  const historyArea   = $('historyArea');
+  const summaryLine   = $('summaryLine');
+  const toggleBtn     = $('toggleBtn');
+  const graphCanvas   = $('graphCanvas');
+
+  let graphMode = false;
+
+  // ===== ヘルパ =====
+  function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+  function rand(n){ return Math.floor(Math.random() * n); }
+
+  function calcBalance(){
+    const z = Number(zInput.value);
+    const x = Number(xInput.value);
+    const safeZ = (isFinite(z) && z > 0) ? z : 18;
+    const safeX = (isFinite(x) && x > 0) ? x : 4;
+    return Math.floor(totalPayout * safeX - (1000 / safeZ) * totalSpins);
+  }
+
+  function setReelColor(cls){
+    reels.forEach(r => {
+      r.classList.remove('color-blue','color-green','color-red','color-rainbow');
+      if (cls) r.classList.add(cls);
+    });
+  }
+
+  function setReels(a, b, c){
+    reel1.textContent = String(a);
+    reel2.textContent = String(b);
+    reel3.textContent = String(c);
+  }
+
+  function pickEvenFigure(){
+    const pool = [2,4,6,8];
+    return pool[rand(pool.length)];
+  }
+  function pickOddFigure(){
+    const pool = [1,3,5,7,9];
+    return pool[rand(pool.length)];
+  }
+
+  function updateUI(){
+    if (mode === STATE.NORMAL){
+      statusLine.textContent = '通常時';
+      statusLine.classList.remove('warn');
+    } else if (mode === STATE.JIDAN){
+      statusLine.textContent = '時短 残り ' + remaining + ' 回';
+      statusLine.classList.toggle('warn', remaining <= 10);
+    } else {
+      statusLine.textContent = 'RUSH 残り ' + remaining + ' 回';
+      statusLine.classList.toggle('warn', remaining <= 10);
+    }
+
+    const bal = calcBalance();
+    balanceValue.textContent = bal.toLocaleString() + ' 円';
+    balanceValue.className = 'value ' + (bal >= 0 ? 'plus' : 'minus');
+
+    spinsStat.textContent  = '回転: ' + totalSpins.toLocaleString();
+    payoutStat.textContent = '出玉: ' + totalPayout.toLocaleString() + '発';
+    hitsStat.textContent   = '初当たり: ' + firstHitCount + '回';
+
+    totalBalance.textContent = bal.toLocaleString() + ' 円';
+    totalBalance.className = 'total-balance ' + (bal >= 0 ? 'plus' : 'minus');
+  }
+
+  function updateHistoryUI(){
+    historyList.innerHTML = '';
+    // 新しい順に表示
+    for (let i = history.length - 1; i >= 0; i--){
+      const h = history[i];
+      const row = document.createElement('div');
+      row.className = 'row';
+      const left = document.createElement('span');
+      left.textContent = h.firstSpins.toLocaleString() + '回転 / ' + h.ren + '連 ' + h.payout.toLocaleString() + '発';
+      const right = document.createElement('span');
+      right.className = 'right';
+      right.textContent = '(' + h.breakdown.join(', ') + ')';
+      row.appendChild(left);
+      row.appendChild(right);
+      historyList.appendChild(row);
+    }
+    // サマリー
+    if (history.length > 0){
+      const last = history[history.length - 1];
+      summaryLine.textContent = '直近: 初当たり ' + last.firstSpins.toLocaleString() + '回転 / ' + last.ren + '連 ' + last.payout.toLocaleString() + '発';
+    } else {
+      summaryLine.textContent = '履歴';
+    }
+    if (graphMode) drawGraph();
+  }
+
+  function drawGraph(){
+    const ctx = graphCanvas.getContext('2d');
+    const w = graphCanvas.width  = graphCanvas.offsetWidth || 760;
+    const h = graphCanvas.height = 240;
+    ctx.clearRect(0, 0, w, h);
+
+    // 軸枠
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(48, 8);
+    ctx.lineTo(48, h - 22);
+    ctx.lineTo(w - 8, h - 22);
+    ctx.stroke();
+
+    if (balanceCurve.length < 2){
+      ctx.fillStyle = '#999';
+      ctx.font = '12px sans-serif';
+      ctx.fillText('データがありません', w/2 - 50, h/2);
+      return;
+    }
+
+    let minB = 0, maxB = 0;
+    for (const p of balanceCurve){
+      if (p.balance < minB) minB = p.balance;
+      if (p.balance > maxB) maxB = p.balance;
+    }
+    if (maxB === minB) { maxB = minB + 1000; }
+    const maxS = balanceCurve[balanceCurve.length - 1].spins || 1;
+
+    const xScale = (w - 56) / maxS;
+    const yScale = (h - 32) / (maxB - minB);
+    const yZero  = (h - 22) - (0 - minB) * yScale;
+
+    // ゼロ線
+    ctx.strokeStyle = '#bbb';
+    ctx.setLineDash([4,4]);
+    ctx.beginPath();
+    ctx.moveTo(48, yZero);
+    ctx.lineTo(w - 8, yZero);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 折れ線
+    ctx.strokeStyle = '#e94560';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < balanceCurve.length; i++){
+      const p = balanceCurve[i];
+      const px = 48 + p.spins * xScale;
+      const py = (h - 22) - (p.balance - minB) * yScale;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+
+    // ラベル
+    ctx.fillStyle = '#333';
+    ctx.font = '11px sans-serif';
+    ctx.fillText('+' + Math.round(maxB).toLocaleString(), 4, 14);
+    ctx.fillText(Math.round(minB).toLocaleString(), 4, h - 24);
+    ctx.fillText('0', 32, yZero + 4);
+    ctx.fillText(maxS.toLocaleString() + '回転', w - 70, h - 6);
+  }
+
+  function recordCurve(){
+    balanceCurve.push({ spins: totalSpins, balance: calcBalance() });
+    if (balanceCurve.length > 4000){
+      // 間引き
+      balanceCurve = balanceCurve.filter((_, i) => i % 2 === 0);
+    }
+  }
+
+  // ===== 抽選ロジック =====
+  function determineHitFromNormal(){
+    const r = Math.random();
+    if (r < 0.005){
+      return { kind:'ZENKAITEN',  payout:2400, nextState:STATE.ST,    nextCount:ST_COUNT,    label:'10R(全)' };
+    } else if (r < 0.005 + 0.495){
+      return { kind:'JIDAN_HIT',  payout:300,  nextState:STATE.JIDAN, nextCount:JIDAN_COUNT, label:'3R' };
+    } else {
+      return { kind:'ST_HIT',     payout:300,  nextState:STATE.ST,    nextCount:ST_COUNT,    label:'3R' };
+    }
+  }
+  function determineHitFromJidan(){
+    // 100% ST復帰
+    return { kind:'JIDAN_RECOVERY', payout:2400, nextState:STATE.ST, nextCount:ST_COUNT, label:'10R' };
+  }
+  function determineHitFromST(){
+    const r = Math.random();
+    if (r < 0.005){
+      return { kind:'SPECIAL', payout:4800, nextState:STATE.ST, nextCount:ST_COUNT, label:'20R(特)' };
+    }
+    const bousou = Math.random() < 0.05;
+    return { kind: bousou ? 'BOUSOU' : 'NORMAL_ST', payout:2400, nextState:STATE.ST, nextCount:ST_COUNT, label:'10R' };
+  }
+
+  // ===== 演出 =====
+  async function showAnnounce(text, ms){
+    announceText.textContent = text;
+    announceOverlay.classList.add('show');
+    await sleep(ms);
+    announceOverlay.classList.remove('show');
+  }
+
+  async function animateSpin(slow){
+    // 通常回転：高速 or 低速 1コマ送り
+    const ticks = slow ? 4 : 4;
+    const wait  = slow ? 140 : 35;
+    for (let t = 0; t < ticks; t++){
+      setReels(rand(9)+1, rand(9)+1, rand(9)+1);
+      await sleep(wait);
+    }
+  }
+
+  async function animateHit(hit, fromState){
+    // 全回転
+    if (hit.kind === 'ZENKAITEN'){
+      setReelColor('color-rainbow');
+      for (let t = 0; t < 9; t++){
+        const v = ((t + 6) % 9) + 1;
+        setReels(v, v, v);
+        await sleep(140);
+      }
+      setReels(7, 7, 7);
+      await sleep(300);
+      await showAnnounce('全回転 ★ RUSH 163回 突入', 1200);
+      return;
+    }
+
+    // 暴走
+    if (hit.kind === 'BOUSOU'){
+      setReelColor(null);
+      setReels(1, 3, 5);
+      await sleep(400);
+      mainDisplay.classList.add('bousou-bg');
+      await sleep(2000);
+      setReelColor('color-red');
+      await showAnnounce('暴走!! RUSH 163回 RESET', 1300);
+      mainDisplay.classList.remove('bousou-bg');
+      return;
+    }
+
+    // 通常リーチ → ドーン
+    let figure;
+    if (hit.kind === 'JIDAN_HIT')         figure = pickEvenFigure();
+    else if (hit.kind === 'JIDAN_RECOVERY') figure = pickEvenFigure();
+    else if (hit.kind === 'SPECIAL')      figure = 7;
+    else                                  figure = pickOddFigure();
+
+    // リーチ成立：左右停止、青色
+    setReelColor('color-blue');
+    setReels(figure, '?', figure);
+    await sleep(350);
+    // 中図柄が中速回転
+    for (let t = 0; t < 7; t++){
+      reel2.textContent = String(rand(9)+1);
+      await sleep(110 + t * 18);
+    }
+    // ドーン演出（くるっと1回転）
+    reel2.classList.add('spin-flip');
+    await sleep(260);
+    reel2.classList.remove('spin-flip');
+    setReels(figure, figure, figure);
+
+    // 当たり確定の色変化
+    if (hit.nextState === STATE.ST){
+      setReelColor('color-rainbow');
+    } else {
+      setReelColor('color-green');
+    }
+    await sleep(400);
+
+    if (hit.kind === 'SPECIAL'){
+      await showAnnounce('特殊大当り!! 4800発', 1300);
+    } else if (hit.nextState === STATE.ST){
+      await showAnnounce('RUSH 163回 突入', 1100);
+    } else {
+      await showAnnounce('時短 100回 突入', 1100);
+    }
+  }
+
+  // 初当たりチェーン管理
+  function startNewFirstHitChain(){
+    inFirstHitChain = true;
+    currentStreak = 0;
+    currentStreakPayout = 0;
+    currentBreakdown = [];
+    currentSpinsBeforeFirstHit = spinsAccumulator;
+  }
+  function endFirstHitChain(){
+    if (!inFirstHitChain) return;
+    history.push({
+      firstSpins: currentSpinsBeforeFirstHit,
+      ren: currentStreak,
+      payout: currentStreakPayout,
+      breakdown: currentBreakdown.slice()
+    });
+    inFirstHitChain = false;
+    spinsAccumulator = 0;
+    updateHistoryUI();
+  }
+
+  // ===== 1回転 =====
+  async function runOnce(skip){
+    const prob = (mode === STATE.ST) ? PROB_ST : PROB_NORMAL;
+    totalSpins++;
+    spinsAccumulator++;
+    const isHit = Math.random() < prob;
+
+    if (!skip){
+      const slow = (mode !== STATE.NORMAL && remaining <= 10);
+      await animateSpin(slow);
+    }
+
+    if (isHit){
+      const fromState = mode;
+      let hit;
+      if (fromState === STATE.ST)        hit = determineHitFromST();
+      else if (fromState === STATE.JIDAN) hit = determineHitFromJidan();
+      else                                hit = determineHitFromNormal();
+
+      // 通常時から → 初当たりチェーン開始
+      if (fromState === STATE.NORMAL){
+        startNewFirstHitChain();
+        firstHitCount++;
+      }
+
+      currentStreak++;
+      currentStreakPayout += hit.payout;
+      currentBreakdown.push(hit.label);
+      totalPayout += hit.payout;
+
+      if (!skip){
+        await animateHit(hit, fromState);
+      } else {
+        // スキップ時：最終図柄のみ反映
+        if (hit.kind === 'ZENKAITEN' || hit.kind === 'SPECIAL'){
+          setReels(7,7,7);
+        } else if (hit.kind === 'BOUSOU'){
+          setReels(1,3,5);
+        } else if (hit.kind === 'JIDAN_HIT' || hit.kind === 'JIDAN_RECOVERY'){
+          const f = pickEvenFigure(); setReels(f,f,f);
+        } else {
+          const f = pickOddFigure(); setReels(f,f,f);
+        }
+      }
+
+      mode = hit.nextState;
+      remaining = hit.nextCount;
+      setReelColor(mode === STATE.ST ? 'color-red' : 'color-green');
+    } else {
+      if (mode === STATE.JIDAN || mode === STATE.ST){
+        remaining--;
+        if (remaining <= 0){
+          mode = STATE.NORMAL;
+          remaining = 0;
+          setReelColor(null);
+          endFirstHitChain();
+        }
+      }
+    }
+
+    if (totalSpins % 10 === 0) recordCurve();
+    updateUI();
+  }
+
+  // ===== メインループ =====
+  async function mainLoop(){
+    isRunning = true;
+    stopRequested = false;
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    resetBtn.disabled = true;
+
+    let runCount = 0;
+    let chainStartedInThisRun = false;
+
+    try {
+      while (!stopRequested && runCount < MAX_SPINS_PER_RUN){
+        const skip = skipCheck.checked;
+        await runOnce(skip);
+        runCount++;
+
+        if (inFirstHitChain) chainStartedInThisRun = true;
+
+        // 「ラッシュまで続ける」がONの場合、チェーンが始まり、終わったら停止
+        if (rushCheck.checked && chainStartedInThisRun && !inFirstHitChain){
+          break;
+        }
+
+        // スキップ時はUIに譲る
+        if (skip && runCount % 300 === 0){
+          await sleep(0);
+        }
+      }
+    } catch (e){
+      console.error(e);
+    }
+
+    isRunning = false;
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    resetBtn.disabled = false;
+  }
+
+  // ===== イベント =====
+  startBtn.addEventListener('click', () => {
+    if (isRunning) return;
+    mainLoop();
+  });
+  stopBtn.addEventListener('click', () => {
+    stopRequested = true;
+  });
+  resetBtn.addEventListener('click', () => {
+    if (isRunning) return;
+    mode = STATE.NORMAL;
+    remaining = 0;
+    totalSpins = 0;
+    totalPayout = 0;
+    firstHitCount = 0;
+    currentStreak = 0;
+    currentStreakPayout = 0;
+    currentBreakdown = [];
+    currentSpinsBeforeFirstHit = 0;
+    spinsAccumulator = 0;
+    inFirstHitChain = false;
+    history = [];
+    balanceCurve = [];
+    setReels(7, 7, 7);
+    setReelColor(null);
+    mainDisplay.classList.remove('bousou-bg');
+    updateUI();
+    updateHistoryUI();
+  });
+
+  toggleBtn.addEventListener('click', () => {
+    graphMode = !graphMode;
+    if (graphMode){
+      historyArea.classList.add('graph-mode');
+      toggleBtn.textContent = 'ログ表示';
+      drawGraph();
+    } else {
+      historyArea.classList.remove('graph-mode');
+      toggleBtn.textContent = 'グラフ表示';
+    }
+  });
+
+  zInput.addEventListener('input', updateUI);
+  xInput.addEventListener('input', updateUI);
+
+  // 初期表示
+  updateUI();
+  updateHistoryUI();
+})();
+</script>
+
+</body>
+</html>
