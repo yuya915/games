@@ -356,7 +356,10 @@
 <div class="history-area" id="historyArea">
   <div class="history-header">
     <span class="summary" id="summaryLine">履歴</span>
-    <button class="toggle-btn" id="toggleBtn">グラフ表示</button>
+    <div style="display:flex;gap:6px;">
+      <button class="toggle-btn" id="specBtn">スペック</button>
+      <button class="toggle-btn" id="toggleBtn">グラフ表示</button>
+    </div>
   </div>
   <div class="total-balance" id="totalBalance">0 円</div>
   <div class="history-list" id="historyList"></div>
@@ -455,6 +458,7 @@
   const historyArea   = $('historyArea');
   const summaryLine   = $('summaryLine');
   const toggleBtn     = $('toggleBtn');
+  const specBtn       = $('specBtn');
   const graphCanvas   = $('graphCanvas');
 
   let viewMode = 'log'; // 'log' | 'graph' | 'spec'
@@ -896,21 +900,27 @@
     updateHistoryUI();
   });
 
-  toggleBtn.addEventListener('click', () => {
+  function setViewMode(next){
     historyArea.classList.remove('graph-mode', 'spec-mode');
-    if (viewMode === 'log'){
-      viewMode = 'graph';
+    viewMode = next;
+    if (next === 'graph'){
       historyArea.classList.add('graph-mode');
       toggleBtn.textContent = 'スペック表示';
       drawGraph();
-    } else if (viewMode === 'graph'){
-      viewMode = 'spec';
+    } else if (next === 'spec'){
       historyArea.classList.add('spec-mode');
       toggleBtn.textContent = 'ログ表示';
     } else {
-      viewMode = 'log';
       toggleBtn.textContent = 'グラフ表示';
     }
+  }
+
+  toggleBtn.addEventListener('click', () => {
+    setViewMode(viewMode === 'log' ? 'graph' : viewMode === 'graph' ? 'spec' : 'log');
+  });
+
+  specBtn.addEventListener('click', () => {
+    setViewMode(viewMode === 'spec' ? 'log' : 'spec');
   });
 
   zInput.addEventListener('input', updateUI);
