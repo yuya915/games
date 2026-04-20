@@ -572,10 +572,9 @@
   function determineHitFromST(){
     const r = Math.random();
     if (r < 0.005){
-      return { kind:'SPECIAL', payout:4800, nextState:STATE.ST, nextCount:ST_COUNT, label:'20R(特)' };
+      return { kind:'SPECIAL', payout:4800, nextState:STATE.ST, nextCount:ST_COUNT, label:'10R*2(特)' };
     }
-    const bousou = Math.random() < 0.05;
-    return { kind: bousou ? 'BOUSOU' : 'NORMAL_ST', payout:2400, nextState:STATE.ST, nextCount:ST_COUNT, label:'10R' };
+    return { kind:'NORMAL_ST', payout:2400, nextState:STATE.ST, nextCount:ST_COUNT, label:'10R' };
   }
 
   // ===== 演出 =====
@@ -608,19 +607,6 @@
       setReels(7, 7, 7);
       await sleep(300);
       await showAnnounce('全回転 ★ RUSH 163回 突入', 1200);
-      return;
-    }
-
-    // 暴走
-    if (hit.kind === 'BOUSOU'){
-      setReelColor(null);
-      setReels(1, 3, 5);
-      await sleep(400);
-      mainDisplay.classList.add('bousou-bg');
-      await sleep(2000);
-      setReelColor('color-red');
-      await showAnnounce('暴走!! RUSH 163回 RESET', 1300);
-      mainDisplay.classList.remove('bousou-bg');
       return;
     }
 
