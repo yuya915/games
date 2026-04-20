@@ -61,32 +61,57 @@
     font-size: 0.8rem;
     color: #888;
   }
+  .section {
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto 40px;
+  }
+  .section-title {
+    font-size: 1rem;
+    font-weight: bold;
+    color: #e94560;
+    border-left: 4px solid #e94560;
+    padding-left: 10px;
+    margin-bottom: 16px;
+    letter-spacing: 1px;
+  }
 </style>
 </head>
 <body>
 <h1>ブラウザゲーム集</h1>
 <p class="subtitle">ここで作ったゲームたち</p>
-<div class="games">
-  <a class="card" href="tetris.html">
-    <div class="icon">🧩</div>
-    <div class="name">テトリス</div>
-    <div class="desc">定番落ち物パズル</div>
-  </a>
-  <a class="card" href="spin-gunman.html">
-    <div class="icon">🔫</div>
-    <div class="name">スピン・ガンマン</div>
-    <div class="desc">回転する銃で敵を狙い撃て</div>
-  </a>
-  <a class="card" href="kosokoso-night-gamer.html">
-    <div class="icon">🌙</div>
-    <div class="name">コソコソ・ナイトゲーマー</div>
-    <div class="desc">お母さんにバレずに深夜ゲーム</div>
-  </a>
-  <a class="card" href="pachinko-simulator.html">
-    <div class="icon">🎰</div>
-    <div class="name">スマートな新世紀17</div>
-    <div class="desc">パチンコ収支シミュレーター</div>
-  </a>
+
+<div class="section">
+  <div class="section-title">ゲーム</div>
+  <div class="games">
+    <a class="card" href="tetris.html">
+      <div class="icon">🧩</div>
+      <div class="name">テトリス</div>
+      <div class="desc">定番落ち物パズル</div>
+    </a>
+    <a class="card" href="spin-gunman.html">
+      <div class="icon">🔫</div>
+      <div class="name">スピン・ガンマン</div>
+      <div class="desc">回転する銃で敵を狙い撃て</div>
+    </a>
+    <a class="card" href="kosokoso-night-gamer.html">
+      <div class="icon">🌙</div>
+      <div class="name">コソコソ・ナイトゲーマー</div>
+      <div class="desc">お母さんにバレずに深夜ゲーム</div>
+    </a>
+  </div>
 </div>
+
+<div class="section">
+  <div class="section-title">パチンコシミュレーション</div>
+  <div class="games">
+    <a class="card" href="pachinko-simulator.html">
+      <div class="icon">🎰</div>
+      <div class="name">スマートな新世紀17</div>
+      <div class="desc">パチンコ収支シミュレーター</div>
+    </a>
+  </div>
+</div>
+
 </body>
 </html>
