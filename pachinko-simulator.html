@@ -293,7 +293,7 @@
   <button id="stopBtn" disabled>停止</button>
   <button id="resetBtn">リセット</button>
   <label><input type="checkbox" id="skipCheck"> 演出スキップ</label>
-  <label><input type="checkbox" id="rushCheck"> ラッシュまで続ける</label>
+  <label><input type="checkbox" id="rushCheck"> STまで</label>
   <label>Z(回転/1K): <input type="number" id="zInput" value="18" min="1" max="100" step="0.1"></label>
   <label>X(円/玉): <input type="number" id="xInput" value="4" min="0.1" max="100" step="0.1"></label>
 </div>
@@ -359,6 +359,9 @@
   let history = [];        // {firstSpins, ren, payout, breakdown}
   let balanceCurve = [];   // {spins, balance}
 
+  let chargedSpins = 0;   // ST以外でのみ玉を消費
+  let pendingAutoStop = null; // 'jidan' | 'st' | null
+
   let isRunning = false;
   let stopRequested = false;
 
@@ -401,7 +404,7 @@
     const x = Number(xInput.value);
     const safeZ = (isFinite(z) && z > 0) ? z : 18;
     const safeX = (isFinite(x) && x > 0) ? x : 4;
-    return Math.floor(totalPayout * safeX - (1000 / safeZ) * totalSpins);
+    return Math.floor(totalPayout * safeX - (1000 / safeZ) * chargedSpins);
   }
 
   function setReelColor(cls){
@@ -583,8 +586,8 @@
 
   async function animateSpin(slow){
     // 通常回転：高速 or 低速 1コマ送り
-    const ticks = slow ? 4 : 4;
-    const wait  = slow ? 140 : 35;
+    const ticks = slow ? 6 : 4;
+    const wait  = slow ? 150 : 35;
     for (let t = 0; t < ticks; t++){
       setReels(rand(9)+1, rand(9)+1, rand(9)+1);
       await sleep(wait);
@@ -684,10 +687,11 @@
     const prob = (mode === STATE.ST) ? PROB_ST : PROB_NORMAL;
     totalSpins++;
     spinsAccumulator++;
+    if (mode !== STATE.ST) chargedSpins++; // ST中は玉が減らない
     const isHit = Math.random() < prob;
 
     if (!skip){
-      const slow = (mode !== STATE.NORMAL && remaining <= 10);
+      const slow = (mode !== STATE.NORMAL); // ST/時短中は常に遅く
       await animateSpin(slow);
     }
 
@@ -731,10 +735,12 @@
       if (mode === STATE.JIDAN || mode === STATE.ST){
         remaining--;
         if (remaining <= 0){
+          const exitingFrom = mode;
           mode = STATE.NORMAL;
           remaining = 0;
           setReelColor(null);
           endFirstHitChain();
+          pendingAutoStop = (exitingFrom === STATE.ST) ? 'st' : 'jidan';
         }
       }
     }
@@ -752,7 +758,6 @@
     resetBtn.disabled = true;
 
     let runCount = 0;
-    let chainStartedInThisRun = false;
 
     try {
       while (!stopRequested && runCount < MAX_SPINS_PER_RUN){
@@ -760,11 +765,13 @@
         await runOnce(skip);
         runCount++;
 
-        if (inFirstHitChain) chainStartedInThisRun = true;
-
-        // 「ラッシュまで続ける」がONの場合、チェーンが始まり、終わったら停止
-        if (rushCheck.checked && chainStartedInThisRun && !inFirstHitChain){
-          break;
+        // 自動停止チェック（時短終了 or ST終了）
+        if (pendingAutoStop) {
+          const reason = pendingAutoStop;
+          pendingAutoStop = null;
+          if (reason === 'st') break; // ST終了は常に停止
+          if (reason === 'jidan' && !rushCheck.checked) break; // 「STまで」未チェック時は時短終了でも停止
+          // 「STまで」チェック済みかつ時短終了 → そのまま継続
         }
 
         // スキップ時はUIに譲る
@@ -795,6 +802,8 @@
     mode = STATE.NORMAL;
     remaining = 0;
     totalSpins = 0;
+    chargedSpins = 0;
+    pendingAutoStop = null;
     totalPayout = 0;
     firstHitCount = 0;
     currentStreak = 0;
