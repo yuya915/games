@@ -276,6 +276,40 @@
   }
   .graph-mode #graphCanvas { display: block; }
   .graph-mode .history-list { display: none; }
+  .graph-mode .total-balance { display: none; }
+
+  .spec-panel {
+    display: none;
+    font-size: 13px;
+    color: #3e2723;
+  }
+  .spec-mode .spec-panel { display: block; }
+  .spec-mode .history-list { display: none; }
+  .spec-mode #graphCanvas  { display: none; }
+  .spec-mode .total-balance { display: none; }
+
+  .spec-panel h3 {
+    font-size: 13px;
+    color: #5d4037;
+    margin: 10px 0 4px;
+    border-bottom: 1px solid #c8b88a;
+    padding-bottom: 3px;
+  }
+  .spec-panel table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 6px;
+  }
+  .spec-panel th, .spec-panel td {
+    padding: 4px 8px;
+    border: 1px solid #d7c79a;
+    text-align: left;
+    background: #fff;
+  }
+  .spec-panel th {
+    background: #ede0c8;
+    font-weight: bold;
+  }
 
   @media (max-width: 600px) {
     .reel { width: 80px; height: 110px; font-size: 70px; }
@@ -327,6 +361,36 @@
   <div class="total-balance" id="totalBalance">0 円</div>
   <div class="history-list" id="historyList"></div>
   <canvas id="graphCanvas"></canvas>
+  <div class="spec-panel" id="specPanel">
+    <h3>■ 基本スペック</h3>
+    <table>
+      <tr><th>項目</th><th>数値</th></tr>
+      <tr><td>大当たり確率（通常/時短）</td><td>1/399.9</td></tr>
+      <tr><td>大当たり確率（RUSH中）</td><td>1/99.6</td></tr>
+      <tr><td>RUSH突入率（初当たり時）</td><td>約50%</td></tr>
+      <tr><td>時短回数</td><td>100回</td></tr>
+      <tr><td>RUSH（ST）回数</td><td>163回</td></tr>
+      <tr><td>RUSH継続率（理論値）</td><td>約80.6%</td></tr>
+    </table>
+    <h3>■ 大当たり内訳（通常時）</h3>
+    <table>
+      <tr><th>種別</th><th>割合</th><th>出玉</th><th>当たり後</th></tr>
+      <tr><td>10R 全回転</td><td>0.5%</td><td>2,400発</td><td>RUSH 163回</td></tr>
+      <tr><td>3R（ST直行）</td><td>49.5%</td><td>300発</td><td>RUSH 163回</td></tr>
+      <tr><td>3R（時短）</td><td>49.5%</td><td>300発</td><td>時短 100回</td></tr>
+    </table>
+    <h3>■ 大当たり内訳（時短中）</h3>
+    <table>
+      <tr><th>種別</th><th>割合</th><th>出玉</th><th>当たり後</th></tr>
+      <tr><td>10R</td><td>100%</td><td>2,400発</td><td>RUSH 163回</td></tr>
+    </table>
+    <h3>■ 大当たり内訳（RUSH中）</h3>
+    <table>
+      <tr><th>種別</th><th>割合</th><th>出玉</th><th>当たり後</th></tr>
+      <tr><td>10R*2 特殊</td><td>0.5%</td><td>4,800発</td><td>RUSH 163回</td></tr>
+      <tr><td>10R 通常</td><td>99.5%</td><td>2,400発</td><td>RUSH 163回</td></tr>
+    </table>
+  </div>
 </div>
 
 <script>
@@ -393,7 +457,7 @@
   const toggleBtn     = $('toggleBtn');
   const graphCanvas   = $('graphCanvas');
 
-  let graphMode = false;
+  let viewMode = 'log'; // 'log' | 'graph' | 'spec'
 
   // ===== ヘルパ =====
   function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
@@ -478,7 +542,7 @@
     } else {
       summaryLine.textContent = '履歴';
     }
-    if (graphMode) drawGraph();
+    if (viewMode === 'graph') drawGraph();
   }
 
   function drawGraph(){
@@ -833,13 +897,18 @@
   });
 
   toggleBtn.addEventListener('click', () => {
-    graphMode = !graphMode;
-    if (graphMode){
+    historyArea.classList.remove('graph-mode', 'spec-mode');
+    if (viewMode === 'log'){
+      viewMode = 'graph';
       historyArea.classList.add('graph-mode');
-      toggleBtn.textContent = 'ログ表示';
+      toggleBtn.textContent = 'スペック表示';
       drawGraph();
+    } else if (viewMode === 'graph'){
+      viewMode = 'spec';
+      historyArea.classList.add('spec-mode');
+      toggleBtn.textContent = 'ログ表示';
     } else {
-      historyArea.classList.remove('graph-mode');
+      viewMode = 'log';
       toggleBtn.textContent = 'グラフ表示';
     }
   });
