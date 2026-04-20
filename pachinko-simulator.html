@@ -293,7 +293,7 @@
   <button id="stopBtn" disabled>停止</button>
   <button id="resetBtn">リセット</button>
   <label><input type="checkbox" id="rushCheck"> STまで</label>
-  <label>速度: <select id="speedSelect"><option value="1">1倍</option><option value="2">2倍</option><option value="5">5倍</option></select></label>
+  <label>速度: <select id="speedSelect"><option value="1">1倍</option><option value="2">2倍</option><option value="5">5倍</option><option value="10">10倍</option></select></label>
   <label>Z(回転/1K): <input type="number" id="zInput" value="18" min="1" max="100" step="0.1"></label>
   <label>X(円/玉): <input type="number" id="xInput" value="4" min="0.1" max="100" step="0.1"></label>
 </div>
@@ -399,6 +399,7 @@
   function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
   function ssleep(ms){ return sleep(Math.max(1, Math.round(ms / (Number(speedSelect.value) || 1)))); }
   function rand(n){ return Math.floor(Math.random() * n); }
+  function wrap9(n){ return ((n - 1 + 9) % 9) + 1; }
 
   function calcBalance(){
     const z = Number(zInput.value);
@@ -581,7 +582,7 @@
   async function showAnnounce(text, ms){
     announceText.textContent = text;
     announceOverlay.classList.add('show');
-    await ssleep(ms);
+    await sleep(ms);
     announceOverlay.classList.remove('show');
   }
 
@@ -602,10 +603,10 @@
       for (let t = 0; t < 9; t++){
         const v = ((t + 6) % 9) + 1;
         setReels(v, v, v);
-        await ssleep(140);
+        await sleep(140);
       }
       setReels(7, 7, 7);
-      await ssleep(300);
+      await sleep(300);
       await showAnnounce('全回転 ★ RUSH 163回 突入', 1200);
       return;
     }
@@ -614,9 +615,9 @@
     if (hit.kind === 'BOUSOU'){
       setReelColor(null);
       setReels(1, 3, 5);
-      await ssleep(400);
+      await sleep(400);
       mainDisplay.classList.add('bousou-bg');
-      await ssleep(2000);
+      await sleep(2000);
       setReelColor('color-red');
       await showAnnounce('暴走!! RUSH 163回 RESET', 1300);
       mainDisplay.classList.remove('bousou-bg');
@@ -633,15 +634,20 @@
     // リーチ成立：左右停止、青色
     setReelColor('color-blue');
     setReels(figure, '?', figure);
-    await ssleep(350);
-    // 中図柄が中速回転
-    for (let t = 0; t < 7; t++){
+    await sleep(350);
+    // 高速ランダム回転
+    for (let t = 0; t < 8; t++){
       reel2.textContent = String(rand(9)+1);
-      await ssleep(110 + t * 18);
+      await sleep(50 + t * 12);
     }
-    // ドーン演出（くるっと1回転）
+    // 順番に当たり図柄へスローダウン
+    for (let i = 3; i >= 1; i--){
+      reel2.textContent = String(wrap9(figure - i));
+      await sleep(100 + (3 - i) * 70);
+    }
+    // 当たり図柄で止まる
     reel2.classList.add('spin-flip');
-    await ssleep(260);
+    await sleep(260);
     reel2.classList.remove('spin-flip');
     setReels(figure, figure, figure);
 
@@ -651,7 +657,7 @@
     } else {
       setReelColor('color-green');
     }
-    await ssleep(400);
+    await sleep(400);
 
     if (hit.kind === 'SPECIAL'){
       await showAnnounce('特殊大当り!! 4800発', 1300);
@@ -660,6 +666,41 @@
     } else {
       await showAnnounce('時短 100回 突入', 1100);
     }
+  }
+
+  async function animateReachMiss(currentMode){
+    const figure = (currentMode === STATE.JIDAN) ? pickEvenFigure() : pickOddFigure();
+
+    // リーチ成立
+    setReelColor('color-blue');
+    setReels(figure, '?', figure);
+    await sleep(350);
+
+    // 高速ランダム回転
+    for (let t = 0; t < 8; t++){
+      reel2.textContent = String(rand(9)+1);
+      await sleep(50 + t * 12);
+    }
+
+    // ハズレパターン：一個前で止まる or 一個後に通り過ぎる
+    if (Math.random() < 0.5){
+      // 一個後に通り過ぎる
+      for (let i = 3; i >= 0; i--){
+        reel2.textContent = String(wrap9(figure - i));
+        await sleep(i === 0 ? 110 : 100 + (3 - i) * 60);
+      }
+      reel2.textContent = String(wrap9(figure + 1));
+    } else {
+      // 一個前で止まる
+      for (let i = 3; i >= 1; i--){
+        reel2.textContent = String(wrap9(figure - i));
+        await sleep(100 + (3 - i) * 70);
+      }
+      reel2.textContent = String(wrap9(figure - 1));
+    }
+    await sleep(700);
+
+    setReelColor(null);
   }
 
   // 初当たりチェーン管理
@@ -718,6 +759,10 @@
       remaining = hit.nextCount;
       setReelColor(mode === STATE.ST ? 'color-red' : 'color-green');
     } else {
+      // ハズレ：ヒット確率と同確率でリーチハズレ演出（1:1バランス）
+      if (Math.random() < prob){
+        await animateReachMiss(mode);
+      }
       if (mode === STATE.JIDAN || mode === STATE.ST){
         remaining--;
         if (remaining <= 0){
