@@ -292,8 +292,8 @@
   <button id="startBtn">スタート</button>
   <button id="stopBtn" disabled>停止</button>
   <button id="resetBtn">リセット</button>
-  <label><input type="checkbox" id="skipCheck"> 演出スキップ</label>
   <label><input type="checkbox" id="rushCheck"> STまで</label>
+  <label>速度: <select id="speedSelect"><option value="1">1倍</option><option value="2">2倍</option><option value="5">5倍</option></select></label>
   <label>Z(回転/1K): <input type="number" id="zInput" value="18" min="1" max="100" step="0.1"></label>
   <label>X(円/玉): <input type="number" id="xInput" value="4" min="0.1" max="100" step="0.1"></label>
 </div>
@@ -370,8 +370,8 @@
   const startBtn      = $('startBtn');
   const stopBtn       = $('stopBtn');
   const resetBtn      = $('resetBtn');
-  const skipCheck     = $('skipCheck');
   const rushCheck     = $('rushCheck');
+  const speedSelect   = $('speedSelect');
   const zInput        = $('zInput');
   const xInput        = $('xInput');
   const reel1         = $('reel1');
@@ -397,6 +397,7 @@
 
   // ===== ヘルパ =====
   function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+  function ssleep(ms){ return sleep(Math.max(1, Math.round(ms / (Number(speedSelect.value) || 1)))); }
   function rand(n){ return Math.floor(Math.random() * n); }
 
   function calcBalance(){
@@ -580,7 +581,7 @@
   async function showAnnounce(text, ms){
     announceText.textContent = text;
     announceOverlay.classList.add('show');
-    await sleep(ms);
+    await ssleep(ms);
     announceOverlay.classList.remove('show');
   }
 
@@ -590,7 +591,7 @@
     const wait  = slow ? 150 : 35;
     for (let t = 0; t < ticks; t++){
       setReels(rand(9)+1, rand(9)+1, rand(9)+1);
-      await sleep(wait);
+      await ssleep(wait);
     }
   }
 
@@ -601,10 +602,10 @@
       for (let t = 0; t < 9; t++){
         const v = ((t + 6) % 9) + 1;
         setReels(v, v, v);
-        await sleep(140);
+        await ssleep(140);
       }
       setReels(7, 7, 7);
-      await sleep(300);
+      await ssleep(300);
       await showAnnounce('全回転 ★ RUSH 163回 突入', 1200);
       return;
     }
@@ -613,9 +614,9 @@
     if (hit.kind === 'BOUSOU'){
       setReelColor(null);
       setReels(1, 3, 5);
-      await sleep(400);
+      await ssleep(400);
       mainDisplay.classList.add('bousou-bg');
-      await sleep(2000);
+      await ssleep(2000);
       setReelColor('color-red');
       await showAnnounce('暴走!! RUSH 163回 RESET', 1300);
       mainDisplay.classList.remove('bousou-bg');
@@ -632,15 +633,15 @@
     // リーチ成立：左右停止、青色
     setReelColor('color-blue');
     setReels(figure, '?', figure);
-    await sleep(350);
+    await ssleep(350);
     // 中図柄が中速回転
     for (let t = 0; t < 7; t++){
       reel2.textContent = String(rand(9)+1);
-      await sleep(110 + t * 18);
+      await ssleep(110 + t * 18);
     }
     // ドーン演出（くるっと1回転）
     reel2.classList.add('spin-flip');
-    await sleep(260);
+    await ssleep(260);
     reel2.classList.remove('spin-flip');
     setReels(figure, figure, figure);
 
@@ -650,7 +651,7 @@
     } else {
       setReelColor('color-green');
     }
-    await sleep(400);
+    await ssleep(400);
 
     if (hit.kind === 'SPECIAL'){
       await showAnnounce('特殊大当り!! 4800発', 1300);
@@ -683,17 +684,15 @@
   }
 
   // ===== 1回転 =====
-  async function runOnce(skip){
+  async function runOnce(){
     const prob = (mode === STATE.ST) ? PROB_ST : PROB_NORMAL;
     totalSpins++;
     spinsAccumulator++;
-    if (mode !== STATE.ST) chargedSpins++; // ST中は玉が減らない
+    if (mode === STATE.NORMAL) chargedSpins++; // 通常時のみ玉が減る
     const isHit = Math.random() < prob;
 
-    if (!skip){
-      const slow = (mode !== STATE.NORMAL); // ST/時短中は常に遅く
-      await animateSpin(slow);
-    }
+    const slow = (mode !== STATE.NORMAL); // ST/時短中は常に遅く
+    await animateSpin(slow);
 
     if (isHit){
       const fromState = mode;
@@ -713,20 +712,7 @@
       currentBreakdown.push(hit.label);
       totalPayout += hit.payout;
 
-      if (!skip){
-        await animateHit(hit, fromState);
-      } else {
-        // スキップ時：最終図柄のみ反映
-        if (hit.kind === 'ZENKAITEN' || hit.kind === 'SPECIAL'){
-          setReels(7,7,7);
-        } else if (hit.kind === 'BOUSOU'){
-          setReels(1,3,5);
-        } else if (hit.kind === 'JIDAN_HIT' || hit.kind === 'JIDAN_RECOVERY'){
-          const f = pickEvenFigure(); setReels(f,f,f);
-        } else {
-          const f = pickOddFigure(); setReels(f,f,f);
-        }
-      }
+      await animateHit(hit, fromState);
 
       mode = hit.nextState;
       remaining = hit.nextCount;
@@ -761,8 +747,7 @@
 
     try {
       while (!stopRequested && runCount < MAX_SPINS_PER_RUN){
-        const skip = skipCheck.checked;
-        await runOnce(skip);
+        await runOnce();
         runCount++;
 
         // 自動停止チェック（時短終了 or ST終了）
@@ -772,11 +757,6 @@
           if (reason === 'st') break; // ST終了は常に停止
           if (reason === 'jidan' && !rushCheck.checked) break; // 「STまで」未チェック時は時短終了でも停止
           // 「STまで」チェック済みかつ時短終了 → そのまま継続
-        }
-
-        // スキップ時はUIに譲る
-        if (skip && runCount % 300 === 0){
-          await sleep(0);
         }
       }
     } catch (e){
